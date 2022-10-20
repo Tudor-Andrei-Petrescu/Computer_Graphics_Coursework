@@ -16,6 +16,9 @@
 
 #include<cstring>
 
+#include <glm/gtc/matrix_transform.hpp>
+
+
 #define WIDTH 320
 #define HEIGHT 240
 
@@ -33,7 +36,7 @@ std::unordered_map<std::string,Colour> readColours(const std::string &filename){
 		std::vector<std::string> splitColourName = split(colourName,' ');
 		std::getline(inputStream,line);
 		std::vector<std::string> splitLine = split(line,' ');
-		colourMap[splitColourName[1]] =  Colour(stof(splitLine[1]), stof(splitLine[2]), stof(splitLine[3]));
+		colourMap[splitColourName[1]] =  Colour(stof(splitLine[1])*255, stof(splitLine[2])*255, stof(splitLine[3])*255);
 		std::getline(inputStream,line);
 	}
 
@@ -43,20 +46,23 @@ std::unordered_map<std::string,Colour> readColours(const std::string &filename){
 
 glm::vec2 getCanvasIntersectionPoint(glm::vec3 cameraPos, float focalLength, glm::vec3 vertex){
 
-	float u = focalLength * (vertex.x/vertex.z) + (WIDTH/2);
-	float v = focalLength * (vertex.y/vertex.z) + (HEIGHT/2);
+	vertex = vertex - cameraPos;
+	glm::vec3 scaling = glm::vec3(170,170,1);
+	vertex = vertex * scaling;
 
-	return glm::vec2(u,v);
+	return glm::vec2((focalLength *  -vertex.x/vertex.z + WIDTH/2),focalLength * vertex.y/vertex.z+ HEIGHT/2);
 	
 }
-void pointCloudRenderer(glm::vec3 coordinates, DrawingWindow &window,float focalLength, glm::vec3 cameraPos){
+glm::vec2 pointCloudRenderer(glm::vec3 coordinates, DrawingWindow &window,float focalLength, glm::vec3 cameraPos){
 
 	
-		glm::vec3 scaling = glm::vec3(240,240,240);
-		glm::vec2 p1 = getCanvasIntersectionPoint(cameraPos,focalLength,coordinates*scaling);
-		 window.setPixelColour(p1.x, p1.y, 0xFFFFFFFF);
+		
+		glm::vec2 p1 = getCanvasIntersectionPoint(cameraPos,focalLength,coordinates);
+		 return p1;
 
 	}
+
+
 
 std::vector<ModelTriangle> readOBJFile(const std::string &filename,float scalingFactor,std::unordered_map<std::string,Colour> colourMap,float focalLength, glm::vec3 cameraPos, DrawingWindow &window ){
 
@@ -81,7 +87,7 @@ std::vector<ModelTriangle> readOBJFile(const std::string &filename,float scaling
 			float y = std::stof(splitLine[2]) * scalingFactor;
 			float z = std::stof(splitLine[3]) * scalingFactor;
 			coordinates.push_back(glm::vec3(x,y,z));
-			pointCloudRenderer(glm::vec3(x,y,z),window,focalLength,cameraPos);
+			//pointCloudRenderer(glm::vec3(x,y,z),window,focalLength,cameraPos);
 		}
 
 		else if(splitLine[0] == "f"){
@@ -189,8 +195,33 @@ void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour)
 	}
 
 
-	drawTriangle(tr,window,Colour(255,255,255));	
 }
+
+void wireFrameRender(std::vector<ModelTriangle> vertices, DrawingWindow &window, float focalLength, glm::vec3 cameraPos,bool colour){
+
+	for(ModelTriangle tr : vertices){
+
+		glm::vec2 p1 = pointCloudRenderer(tr.vertices[0],window,focalLength,cameraPos);
+		glm::vec2 p2 = pointCloudRenderer(tr.vertices[1],window,focalLength,cameraPos);
+		glm::vec2 p3 = pointCloudRenderer(tr.vertices[2],window,focalLength,cameraPos);
+		
+
+		if(colour==false){
+
+		drawTriangle(CanvasTriangle(CanvasPoint(p1.x,p1.y),CanvasPoint(p2.x,p2.y),CanvasPoint(p3.x,p3.y)),window,Colour(255,255,255));
+
+		}
+	
+		else{
+
+		drawFilledTriangle(CanvasTriangle(CanvasPoint(p1.x,p1.y),CanvasPoint(p2.x,p2.y),CanvasPoint(p3.x,p3.y)),window,tr.colour);
+
+		}
+	
+	}
+}
+
+
 
 void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureTriangle,DrawingWindow &window, TextureMap textureMap){
 
@@ -370,6 +401,7 @@ int main(int argc, char *argv[]) {
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
 		//draw(window);
 		//pointCloudRenderer(test,window,2,cameraPos);
+		wireFrameRender(test,window,2,cameraPos,true);
 		// drawTexturedTriangle(CanvasTriangle(CanvasPoint(160, 10),CanvasPoint(300, 230),CanvasPoint(10, 150)),
 		// CanvasTriangle(CanvasPoint(195, 5),CanvasPoint(395, 380),CanvasPoint(65, 330)),window,map);
 		
