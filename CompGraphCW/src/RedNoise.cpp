@@ -8,19 +8,18 @@
 #include <CanvasPoint.h>
 #include <TextureMap.h>
 #include <Colour.h>
-#include <time.h>
-
 #include <ModelTriangle.h>
+
+#include <time.h>
 
 #include <unordered_map>
 
 #include<cstring>
 
-#include <glm/gtc/matrix_transform.hpp>
+#include <stdio.h>
 
-
-#define WIDTH 320
-#define HEIGHT 240
+#define WIDTH 500
+#define HEIGHT 500
 
 
 std::vector<double> zBuffer;
@@ -68,8 +67,8 @@ glm::vec2 getCanvasIntersectionPoint(glm::vec3 cameraPos, float focalLength, glm
 	float u = focalLength *  vertex.x/vertex.z;
 	float v = focalLength * vertex.y/vertex.z;
 	
-	u = -u *180.0 + WIDTH/2.0;
-	v = v *180.0 + HEIGHT/2.0;
+	u = -u *250.0 + WIDTH/2.0;
+	v = v *250.0 + HEIGHT/2.0;
 	return glm::vec2(u,v);
 	
 	
@@ -132,8 +131,9 @@ std::vector<float> interpolateSingleFloats(float from, float to, int numberOfVal
 	return result;
 
 }
-#include <stdio.h>
- void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour colour){		
+
+ void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour colour){	
+
 		float xDiff = to.x - from.x;
 		float yDiff = to.y - from.y;
 		float zDiff = to.depth - from.depth;
@@ -158,12 +158,16 @@ std::vector<float> interpolateSingleFloats(float from, float to, int numberOfVal
 			int ix = int(x);
 			int iy = int(y);
 
-			double prev_depth = zBuffer[ix + iy * WIDTH];
+			if(ix + iy * WIDTH <=zBuffer.size()){
 
-			if ((1.0 / z) >= prev_depth) {
+				double prev_depth = zBuffer[ix + iy * WIDTH];
+				if ((1.0 / z) >= prev_depth && (x>=0 && x <=WIDTH && y >=0 && y <=HEIGHT)) {
 				window.setPixelColour(ix, iy, pixelColour);
 				zBuffer[ix + iy * WIDTH] = (1.0 / z);
 			}
+			}
+
+			
 
 
 				
@@ -171,6 +175,7 @@ std::vector<float> interpolateSingleFloats(float from, float to, int numberOfVal
 		}
 
  }
+
 void drawTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour){
 
 	drawLine(tr.v0(),tr.v1(),window,colour);
@@ -179,56 +184,6 @@ void drawTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour){
 
 }
 
-void drawDepthFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour){
-
-	CanvasPoint top = tr.v0();
-	CanvasPoint bottom = tr.v1();
-	CanvasPoint right = tr.v2();
-	
-	if(top.y > bottom.y){
-
-		std::swap(top, bottom);
-
-	}
-	if(top.y > right.y){
-		std::swap(top, right);
-	}
-
-	if(bottom.y < right.y){
-		std::swap(bottom,right);
-	}
-
-	float red = colour.red;
-	float green = colour.green;
-	float blue = colour.blue;
-	uint32_t pixelColour = (255 << 24) + (int(red)<<16) + (int(green)<<8 ) + (int(blue));
-
-	float x = top.x - (top.x-bottom.x)*(right.y-top.y)/(bottom.y-top.y);
-	std::vector<glm::vec3> topRight = interpolateThreeElementValues(glm::vec3(top.x,top.y,top.depth),glm::vec3(right.x,right.y,right.depth),abs(right.y-top.y+1));
-	std::vector<glm::vec3> topToNew = interpolateThreeElementValues(glm::vec3(top.x,top.y,top.depth),glm::vec3(x,right.y,bottom.depth),abs(right.y-top.y+1));
-
-	for(int i = 0; i < topRight.size(); i++){
-
-		glm::vec3 left = topToNew.at(i);
-		glm::vec3 right = topRight.at(i);
-		
-		drawLine(CanvasPoint(left.x,left.y),CanvasPoint(right.x,right.y),window,colour);
-	}
-
-
-	std::vector<glm::vec3> NewtoBottom = interpolateThreeElementValues(glm::vec3(x,right.y,top.depth),glm::vec3(bottom.x,bottom.y,bottom.depth),abs(right.y-bottom.y+1));
-	std::vector<glm::vec3> RightToBottom = interpolateThreeElementValues(glm::vec3(right.x,right.y,top.depth),glm::vec3(bottom.x,bottom.y,bottom.depth),abs(right.y-bottom.y+1));
-
-	for(int i = 0; i < NewtoBottom.size(); i++){
-
-		glm::vec3 left = NewtoBottom.at(i);
-		glm::vec3 right = RightToBottom.at(i);
-	
-
-		drawLine(CanvasPoint(left.x,left.y),CanvasPoint(right.x,right.y),window,colour);
-	}
-
-}
 void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour){
 
 	CanvasPoint top = tr.v0();
@@ -299,11 +254,6 @@ std::vector<CanvasTriangle> convertModelToCanvas(std::vector<ModelTriangle> vert
 		glm::vec2 p2 = getCanvasIntersectionPoint(cameraPos,focalLength,tr.vertices[1]);
 		glm::vec2 p3 = getCanvasIntersectionPoint(cameraPos,focalLength,tr.vertices[2]);		
 	
-
-		// float z1 = (tr.vertices[0].z - cameraPos.z) * (tr.vertices[0].z - cameraPos.z);
-		// float z2 = (tr.vertices[1].z - cameraPos.z) * (tr.vertices[1].z - cameraPos.z);
-		// float z3 = (tr.vertices[2].z - cameraPos.z) * (tr.vertices[2].z - cameraPos.z);
-
 		canvasTriangles.push_back(CanvasTriangle(CanvasPoint(p1.x,p1.y,abs(z1)),CanvasPoint(p2.x,p2.y,abs(z2)),CanvasPoint(p3.x,p3.y,abs(z3))));
 	}
 
@@ -327,14 +277,17 @@ void initialiseDepthBuffer(float **zBuffer, int width, int height){
 
 }
 
-void wireFrameRender(std::vector<ModelTriangle> vertices, DrawingWindow &window, float focalLength, glm::vec3 cameraPos,bool colour) {	
+void wireFrameRender(std::vector<ModelTriangle> vertices, DrawingWindow &window, float focalLength, glm::vec3 &cameraPos,bool colour) {	
 	std::vector<CanvasTriangle> canvasTriangles = convertModelToCanvas(vertices,window,focalLength,cameraPos);
+
+	window.clearPixels();
 
 	for(int i = 0; i< canvasTriangles.size();i++){
 		if(colour==false){
 			drawTriangle(canvasTriangles[i],window,Colour(255,255,255));
 		} else{
 			drawFilledTriangle(canvasTriangles[i],window,vertices[i].colour);
+
 		}		
 	}
 }
@@ -443,16 +396,10 @@ void draw(DrawingWindow &window) {
 	}
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window) {
-	if (event.type == SDL_KEYDOWN){
-		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_RIGHT) std::cout << "RIGHT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_UP) std::cout << "UP" << std::endl;
-		else if (event.key.keysym.sym == SDLK_DOWN) std::cout << "DOWN" << std::endl;
-	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
-		window.savePPM("output.ppm");
-		window.saveBMP("output.bmp");
-	} else if(event.key.keysym.sym == SDLK_u){
+void handleEvent(SDL_Event event, DrawingWindow &window,glm::vec3 &cameraPos) {
+	
+	
+	 if(event.key.keysym.sym == SDLK_u){
 
 		CanvasPoint p1(rand() % WIDTH, rand() % HEIGHT);
 		CanvasPoint p2(rand() % WIDTH, rand() % HEIGHT);
@@ -469,7 +416,38 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 		Colour colour(rand() % 256, rand() % 256, rand() % 256);
 
 		drawFilledTriangle(tr,window,colour);
-	}
+	} else if(event.key.keysym.sym == SDLK_a){
+
+		cameraPos.x+=1.0;
+	} else if(event.key.keysym.sym == SDLK_d){
+
+		cameraPos.x-=1.0;
+	} else if(event.key.keysym.sym == SDLK_w){
+
+		cameraPos.y-=1.0;
+	} else if(event.key.keysym.sym == SDLK_s){
+
+		cameraPos.y+=1.0;
+	} else if(event.key.keysym.sym == SDLK_UP){
+
+		cameraPos.z-=1.0;
+	} else if(event.key.keysym.sym == SDLK_DOWN){
+
+		cameraPos.z+=1.0;
+	} else if(event.key.keysym.sym == SDLK_r){
+
+		// glm::mat3x3 rotationMatrix = glm::mat3x3(1,0,0,
+		// 										 0,cos(90.0),sin(90.0),
+		// 										 0,-sin(90.0),cos(90.0));
+
+		
+		cameraPos = rotationMatrix * cameraPos;
+
+
+	} else if(event.key.keysym.sym == SDLK_RIGHT){
+
+		cameraPos.z-=1.0;
+	} 
 }
 
 
@@ -492,7 +470,7 @@ int main(int argc, char *argv[]) {
 	
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window);
+		if (window.pollForInputEvents(event)) handleEvent(event, window,cameraPos);
 		//draw(window);
 		wireFrameRender(modelTriangles,window,2,cameraPos,colour);
 		
@@ -502,7 +480,7 @@ int main(int argc, char *argv[]) {
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 
-}
+	}
 
 }
 
