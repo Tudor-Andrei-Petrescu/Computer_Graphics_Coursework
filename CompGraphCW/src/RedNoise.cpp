@@ -139,18 +139,23 @@ std::unordered_map<std::string,Colour> readColours(const std::string &filename){
 	
 }
 
-glm::vec2 getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex){
+CanvasPoint getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex){
 
-	vertex = vertex - camera.cameraPosition;
+	vertex = -(vertex - camera.cameraPosition);
 	vertex = vertex * camera.orientation;
 
 	
 	float u = camera.focalLength *  vertex.x/vertex.z;
 	float v = camera.focalLength * vertex.y/vertex.z;
+
 	
 	u = -u *camera.planeScale+ WIDTH/2.0;
 	v = v *camera.planeScale + HEIGHT/2.0;
-	return glm::vec2(u,v);
+
+	CanvasPoint p = CanvasPoint(u,v);
+	p.depth = vertex.z;
+
+	return p;
 	
 	
 }
@@ -358,11 +363,11 @@ std::vector<CanvasTriangle> convertModelToCanvas(std::vector<ModelTriangle> vert
 		float z2 = tr.vertices[1].z - camera.cameraPosition.z;
 		float z3 = tr.vertices[2].z - camera.cameraPosition.z;
 
-		glm::vec2 p1 = getCanvasIntersectionPoint(camera,tr.vertices[0]);
-		glm::vec2 p2 = getCanvasIntersectionPoint(camera,tr.vertices[1]);
-		glm::vec2 p3 = getCanvasIntersectionPoint(camera,tr.vertices[2]);		
+		CanvasPoint p1 = getCanvasIntersectionPoint(camera,tr.vertices[0]);
+		CanvasPoint p2 = getCanvasIntersectionPoint(camera,tr.vertices[1]);
+		CanvasPoint p3 = getCanvasIntersectionPoint(camera,tr.vertices[2]);		
 	
-		canvasTriangles.push_back(CanvasTriangle(CanvasPoint(p1.x,p1.y,abs(z1)),CanvasPoint(p2.x,p2.y,abs(z2)),CanvasPoint(p3.x,p3.y,abs(z3))));
+		canvasTriangles.push_back(CanvasTriangle(p1,p2,p3));
 	}
 
 
