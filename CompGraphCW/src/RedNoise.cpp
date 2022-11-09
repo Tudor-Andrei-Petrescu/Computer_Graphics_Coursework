@@ -200,17 +200,7 @@ glm::vec3 getWorldIntersectionPoint(Camera &camera, CanvasPoint point)
 
 	return worldPoint;
 
-	// float u = point.x;
-	// float v = point.y;
-	// float xOverz = (u - (WIDTH / 2)) / (camera.focalLength * (camera.planeScale));
-	// float yOverz = (v - (HEIGHT / 2)) / (camera.focalLength * (-camera.planeScale));
-	// float xOvery = xOverz / yOverz;
-	// float z = camera.cameraPosition.z - camera.focalLength;
-	// float x = xOverz * z;
-	// float y = yOverz * z;
-	// glm::vec3 corrected = glm::vec3(x, y, z);
-	// glm::vec3 vertexPosition = (camera.orientation) * corrected;
-	// return vertexPosition;
+	
 }
 
 std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalingFactor, std::unordered_map<std::string, Colour> colourMap, float focalLength, Camera &camera, DrawingWindow &window)
@@ -663,7 +653,6 @@ RayTriangleIntersection getClosestIntersectionPoints(Camera &camera, glm::vec3 r
 void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
 
 
-	//glm::vec3 rayDirection = glm::normalize(getWorldIntersectionPoint(camera, CanvasPoint(i,j)));
 			glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point) - camera.cameraPosition;
 			 //rayDirection = rayDirection - camera.cameraPosition;
 			//std::cout<<rayDirection.x<<" "<<rayDirection.y<<" "<<rayDirection.z<<std::endl;
