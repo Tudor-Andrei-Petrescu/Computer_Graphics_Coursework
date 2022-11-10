@@ -23,15 +23,20 @@
 #include <RayTriangleIntersection.h>
 
 #include<thread>
-#include<mutex>
+
+#include <mutex>
+
 
 
 #define WIDTH 500
 #define HEIGHT 500
 
+std::mutex mu;
+
 std::vector<double> zBuffer;
 
-std::mutex mu;
+
+
 
 class Camera
 {
@@ -92,39 +97,39 @@ public:
 		std::cout << this->cameraPosition.z << " is z value now" << std::endl;
 	}
 
-	void rotateX(bool direction)
+	void rotateX(bool clockWise)
 	{
 
 		double dir = angle;
-		if (!direction)
+		if (!clockWise)
 			dir = -angle;
 
 		glm::mat3x3 rotationMatrix = glm::mat3x3(1.0, 0.0, 0.0, 0.0, cos(dir), -sin(dir), 0.0, sin(dir), cos(dir));
 		this->cameraPosition = rotationMatrix * this->cameraPosition;
 	}
 
-	void rotateY(bool direction)
+	void rotateY(bool clockWise)
 	{
 
 		double dir = angle;
-		if (!direction)
+		if (!clockWise)
 			dir = -angle;
 		glm::mat3x3 rotationMatrix = glm::mat3x3(cos(dir), 0.0, sin(dir), 0.0, 1.0, 0.0, -sin(dir), 0.0, cos(dir));
 		this->cameraPosition = rotationMatrix * this->cameraPosition;
 	}
 
-	void changeOrientationY(bool direction)
+	void changeOrientationY(bool clockWise)
 	{
 		double dir = angle;
-		if(!direction) dir = -angle;
+		if(!clockWise) dir = -angle;
 		glm::mat3x3 rotationMatrix = glm::mat3x3(cos(dir), 0.0, sin(dir), 0.0, 1.0, 0.0, -sin(dir), 0.0, cos(dir));
 		this->orientation = rotationMatrix * this->orientation;
 	}
 
-	void changeOrientationX(bool direction)
+	void changeOrientationX(bool clockWise)
 	{
 		double dir = angle;
-		if(!direction) dir = -angle;
+		if(!clockWise) dir = -angle;
 		glm::mat3x3 rotationMatrix = glm::mat3x3(1.0, 0.0, 0.0, 0.0, cos(dir), -sin(dir), 0.0, sin(dir), cos(dir));
 		this->orientation = rotationMatrix * this->orientation;
 	}
@@ -172,7 +177,7 @@ CanvasPoint getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex)
 {
 
 	vertex = -(vertex - camera.cameraPosition);
-	vertex = vertex * camera.orientation;
+	vertex = vertex * glm::transpose(camera.orientation);
 
 	float u = camera.focalLength * vertex.x / vertex.z;
 	float v = camera.focalLength * vertex.y / vertex.z;
@@ -190,15 +195,23 @@ CanvasPoint getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex)
 glm::vec3 getWorldIntersectionPoint(Camera &camera, CanvasPoint point)
 {
 	//u = x/z, v = y/z
-	float u = (point.x - WIDTH / 2.0) / (camera.planeScale * camera.focalLength * 0.5);
-	float v = (-point.y + HEIGHT / 2.0) / (camera.planeScale * camera.focalLength * 0.5);
+	// float u = (point.x - WIDTH / 2.0) / (camera.planeScale * camera.focalLength * 0.5);
+	// float v = (-point.y + HEIGHT / 2.0) / (camera.planeScale * camera.focalLength * 0.5);
 
-	glm::vec3 worldPoint = glm::vec3(u, v, camera.focalLength);
-	worldPoint =  camera.orientation * worldPoint ;
+	float u = point.x - WIDTH/2.0;
+	float v = HEIGHT/2.0- point.y;
+	
+	float z = -camera.focalLength*camera.planeScale;
+
+	// glm::vec3 worldPoint = glm::vec3(u, v, camera.focalLength);
+	// worldPoint =  camera.orientation * worldPoint ;
+
+	glm::vec3 worldPoint = glm::transpose(camera.orientation) * glm::vec3(u, v, z);
+
 
 	// worldPoint = worldPoint - camera.cameraPosition;
 
-	return worldPoint;
+	return glm::normalize(worldPoint);
 
 	
 }
@@ -610,7 +623,7 @@ RayTriangleIntersection getClosestIntersectionPoints(Camera &camera, glm::vec3 r
 	RayTriangleIntersection closestIntersection;
 
 	closestIntersection.triangleIndex = modelTriangles.size()+1;
-	int minDist = INT_MAX;
+	float minDist = 999999999.0f;
 
 	for(int i = 0; i < modelTriangles.size(); i++){
 
@@ -625,16 +638,16 @@ RayTriangleIntersection getClosestIntersectionPoints(Camera &camera, glm::vec3 r
 		float v = possibleSolution.z;
 		
 	
-		if(t < minDist  && (u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) &&(u + v) <= 1.0  && t>0){
+		if(t < minDist  && (u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) &&(u + v) <= 1.0  && t>=0.0001f){
 
 			minDist = t;
 
-			closestIntersection.intersectionPoint = camera.cameraPosition + (t * rayDirection);
+			//closestIntersection.intersectionPoint = camera.cameraPosition + (t * rayDirection);
+			closestIntersection.intersectionPoint = modelTriangles[i].vertices[0] + u*e0 + v*e1;
 			closestIntersection.intersectedTriangle = modelTriangles[i];
 			closestIntersection.distanceFromCamera = t;
 			closestIntersection.triangleIndex = i;
 
-			std::cout<<"I get a valid t and u and v"<<std::endl;
 
 
 
@@ -653,18 +666,15 @@ RayTriangleIntersection getClosestIntersectionPoints(Camera &camera, glm::vec3 r
 void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
 
 
-			glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point) - camera.cameraPosition;
-			 //rayDirection = rayDirection - camera.cameraPosition;
+			glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point);
 			//std::cout<<rayDirection.x<<" "<<rayDirection.y<<" "<<rayDirection.z<<std::endl;
 			RayTriangleIntersection closestIntersection = getClosestIntersectionPoints(camera, rayDirection, modelTriangles);
 
 			if(closestIntersection.triangleIndex != modelTriangles.size()+1){
-				std::cout<<"i get here";
 				int index = closestIntersection.triangleIndex;
 				Colour colour = modelTriangles[index].colour;
 				uint32_t pixelColour = (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + (int(colour.blue));
-				
-				
+
 				window.setPixelColour(point.x, point.y, pixelColour);
 				
 
@@ -692,25 +702,6 @@ void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<Mode
 
 		//for(int j = 0; j < HEIGHT; j++){
 
-			// //glm::vec3 rayDirection = glm::normalize(getWorldIntersectionPoint(camera, CanvasPoint(i,j)));
-			 // CanvasPoint point = CanvasPoint(i, j);
-			// glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point) - camera.cameraPosition;
-			//  //rayDirection = rayDirection - camera.cameraPosition;
-
-			// //std::cout<<rayDirection.x<<" "<<rayDirection.y<<" "<<rayDirection.z<<std::endl;
-			// RayTriangleIntersection closestIntersection = getClosestIntersectionPoints(camera, rayDirection, modelTriangles);
-
-			// if(closestIntersection.triangleIndex != modelTriangles.size()+1){
-			// 	std::cout<<"i get here";
-			// 	int index = closestIntersection.triangleIndex;
-			// 	Colour colour = modelTriangles[index].colour;
-			// 	uint32_t pixelColour = (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + (int(colour.blue));
-			// 	window.setPixelColour(i, j, pixelColour);
-
-			// }
-
-			//std::thread t(fastRendering, std::ref(window), std::ref(camera), modelTriangles, point);
-        	//threads.push_back(std::move(t));
 			//fastRendering(window, camera, modelTriangles, point);
 			
 
@@ -718,8 +709,8 @@ void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<Mode
 
 		//}
 
-		for(int i = 0; i<10;i++){
-			std::thread t(computePixelValues, i*50, (i+1)*50, std::ref(window), std::ref(camera), modelTriangles);
+		for(int i = 0; i<4;i++){
+			std::thread t(computePixelValues, i*125, (i+1)*125, std::ref(window), std::ref(camera), modelTriangles);
 			threads.push_back(std::move(t));
 		}
 
@@ -746,8 +737,10 @@ void thr(){
 
     for (int i = 0; i < 5; i++) {
 
-        std::thread t(hello,i);
+        std::thread t(hello,i); 
         vec.push_back(std::move(t));
+
+		
     }
     for (auto& t : vec) {
         t.join();
@@ -780,7 +773,7 @@ int main(int argc, char *argv[])
 
 	bool colour = true;
 	 //thr();
-	drawRasterisedScene(window, camera, modelTriangles);
+	// drawRasterisedScene(window, camera, modelTriangles);
 	while (true)
 	{
 		// We MUST poll for events - otherwise the window will freeze !
@@ -789,7 +782,7 @@ int main(int argc, char *argv[])
 		// draw(window);
 		//wireFrameRender(modelTriangles, window, camera, colour);
 		
-
+		drawRasterisedScene(window, camera, modelTriangles);
 		zBuffer = std::vector<double>(WIDTH * HEIGHT, 0.0);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
