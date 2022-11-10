@@ -133,6 +133,14 @@ public:
 		glm::mat3x3 rotationMatrix = glm::mat3x3(1.0, 0.0, 0.0, 0.0, cos(dir), -sin(dir), 0.0, sin(dir), cos(dir));
 		this->orientation = rotationMatrix * this->orientation;
 	}
+
+	void lookAt(glm::vec3 point){
+
+		glm::vec3 z = glm::normalize(point-cameraPosition);
+		glm::vec3 x = glm::normalize(glm::cross(z,glm::vec3(0,1,0)));
+		glm::vec3 y = glm::cross(x,z);
+		orientation = glm::mat3x3(x,y,-z);
+	}
 };
 
 std::unordered_map<std::string, Colour> readColours(const std::string &filename)
@@ -149,7 +157,10 @@ std::unordered_map<std::string, Colour> readColours(const std::string &filename)
 		std::vector<std::string> splitColourName = split(colourName, ' ');
 		std::getline(inputStream, line);
 		std::vector<std::string> splitLine = split(line, ' ');
-		colourMap[splitColourName[1]] = Colour(stof(splitLine[1]) * 255, stof(splitLine[2]) * 255, stof(splitLine[3]) * 255);
+
+		Colour colour = Colour(stof(splitLine[1]) * 255, stof(splitLine[2]) * 255, stof(splitLine[3]) * 255);
+		colour.name = colourName;
+		colourMap[splitColourName[1]] = colour;
 		std::getline(inputStream, line);
 	}
 
@@ -177,7 +188,7 @@ CanvasPoint getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex)
 {
 
 	vertex = -(vertex - camera.cameraPosition);
-	vertex = vertex * glm::transpose(camera.orientation);
+	vertex = vertex * camera.orientation;
 
 	float u = camera.focalLength * vertex.x / vertex.z;
 	float v = camera.focalLength * vertex.y / vertex.z;
@@ -194,22 +205,17 @@ CanvasPoint getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex)
 
 glm::vec3 getWorldIntersectionPoint(Camera &camera, CanvasPoint point)
 {
-	//u = x/z, v = y/z
-	// float u = (point.x - WIDTH / 2.0) / (camera.planeScale * camera.focalLength * 0.5);
-	// float v = (-point.y + HEIGHT / 2.0) / (camera.planeScale * camera.focalLength * 0.5);
-
+	
 	float u = point.x - WIDTH/2.0;
 	float v = HEIGHT/2.0- point.y;
 	
 	float z = -camera.focalLength*camera.planeScale;
 
-	// glm::vec3 worldPoint = glm::vec3(u, v, camera.focalLength);
-	// worldPoint =  camera.orientation * worldPoint ;
-
-	glm::vec3 worldPoint = glm::transpose(camera.orientation) * glm::vec3(u, v, z);
 
 
-	// worldPoint = worldPoint - camera.cameraPosition;
+	glm::vec3 worldPoint = camera.orientation * glm::vec3(u, v, z);
+
+
 
 	return glm::normalize(worldPoint);
 
@@ -226,26 +232,25 @@ std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalin
 	std::vector<glm::vec3> coordinates;
 	Colour currentColour;
 
-	while (std::getline(inputStream, line))
-	{
+	while (std::getline(inputStream, line)){
 
 		std::vector<std::string> splitLine = split(line, ' ');
 
-		if (splitLine[0].find("usemtl") != std::string::npos)
-		{
+		if (splitLine[0].find("usemtl") != std::string::npos){
+
 			std::string colourName = splitLine[1];
 			currentColour = colourMap[colourName];
 		}
-		if (splitLine[0] == "v")
-		{
+		if (splitLine[0] == "v"){
+
 			float x = std::stof(splitLine[1]) * scalingFactor;
 			float y = std::stof(splitLine[2]) * scalingFactor;
 			float z = std::stof(splitLine[3]) * scalingFactor;
 			coordinates.push_back(glm::vec3(x, y, z));
 		}
 
-		else if (splitLine[0] == "f")
-		{
+		else if (splitLine[0] == "f"){
+			
 			int point1 = std::stoi(splitLine[1]) - 1;
 			int point2 = std::stoi(splitLine[2]) - 1;
 			int point3 = std::stoi(splitLine[3]) - 1;
@@ -314,33 +319,30 @@ void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour co
 
 }
 
-void drawTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour, Camera &camera)
-{
+void drawTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour, Camera &camera){
 
 	drawLine(tr.v0(), tr.v1(), window, colour, camera);
 	drawLine(tr.v0(), tr.v2(), window, colour, camera);
 	drawLine(tr.v1(), tr.v2(), window, colour, camera);
 }
 
-void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour, Camera &camera)
-{
+void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour, Camera &camera){
 
 	CanvasPoint top = tr.v0();
 	CanvasPoint bottom = tr.v1();
 	CanvasPoint right = tr.v2();
 
-	if (top.y > bottom.y)
-	{
+	if (top.y > bottom.y){
 
 		std::swap(top, bottom);
 	}
-	if (top.y > right.y)
-	{
+	if (top.y > right.y){
+
 		std::swap(top, right);
 	}
 
-	if (bottom.y < right.y)
-	{
+	if (bottom.y < right.y){
+
 		std::swap(bottom, right);
 	}
 
@@ -400,12 +402,147 @@ std::vector<CanvasTriangle> convertModelToCanvas(std::vector<ModelTriangle> vert
 	return canvasTriangles;
 }
 
-void wireFrameRender(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &camera, bool colour)
+
+RayTriangleIntersection getClosestIntersectionPoints(glm::vec3 cameraPosition, glm::vec3 rayDirection,std::vector<ModelTriangle> modelTriangles){
+
+	RayTriangleIntersection closestIntersection;
+
+	closestIntersection.triangleIndex = modelTriangles.size()+1;
+	float minDist = 999999999.0f;
+
+	for(int i = 0; i < modelTriangles.size(); i++){
+
+		glm::vec3 e0 = modelTriangles[i].vertices[1] - modelTriangles[i].vertices[0];
+		glm::vec3 e1 = modelTriangles[i].vertices[2] - modelTriangles[i].vertices[0];
+		glm::vec3 SPVector = cameraPosition - modelTriangles[i].vertices[0];
+		glm::mat3 DEMatrix(-rayDirection, e0, e1);
+		glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
+
+		float t = possibleSolution.x;
+		float u = possibleSolution.y;
+		float v = possibleSolution.z;
+		
+	
+		if(t < minDist  && (u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) &&(u + v) <= 1.0  && t>=0.001f){
+
+			minDist = t;
+
+			closestIntersection.intersectionPoint = cameraPosition + (t * rayDirection);
+			closestIntersection.intersectedTriangle = modelTriangles[i];
+			closestIntersection.distanceFromCamera = t;
+			closestIntersection.triangleIndex = i;
+
+
+
+
+		}
+
+
+	}
+
+	return closestIntersection;
+
+
+
+}
+
+void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
+
+
+			glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point);
+			RayTriangleIntersection closestIntersection = getClosestIntersectionPoints(camera.cameraPosition, rayDirection, modelTriangles);
+
+			if(closestIntersection.triangleIndex != modelTriangles.size()+1){
+				int index = closestIntersection.triangleIndex;
+				Colour colour = closestIntersection.intersectedTriangle.colour;
+
+				glm::vec3 lightSource = glm::vec3(0,0.7,0);
+				RayTriangleIntersection shadow = getClosestIntersectionPoints(lightSource,closestIntersection.intersectionPoint - lightSource, modelTriangles);
+
+				if(shadow.triangleIndex != modelTriangles.size()+1){
+
+
+						float red = int(colour.red);
+						float green = int(colour.green); 
+						float blue = int(colour.blue); 	
+
+
+					if(shadow.triangleIndex != closestIntersection.triangleIndex){
+
+						
+						red *=0.4;
+						green *=0.4;
+						blue *=0.4;
+						
+					}
+					
+					uint32_t pixelColour = (255 << 24) + ( int(red) << 16)+ (int(green) << 8) + (int(blue));
+					window.setPixelColour(point.x,point.y,pixelColour);
+
+
+				}
+
+				
+				
+				
+
+			}
+}
+
+
+void computePixelValues(int from, int to, DrawingWindow &window, Camera &camera, std::vector<ModelTriangle> modelTriangles){
+
+	for(int i = from; i < to; i++){
+		for(int j = 0; j < window.width; j++){
+			CanvasPoint point(j,i);
+			fastRendering(window, camera, modelTriangles, point);
+		}
+	}
+}
+
+
+void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<ModelTriangle> modelTriangles){
+
+	window.clearPixels();
+
+	
+
+		 std::vector<std::thread> threads = std::vector<std::thread>();
+
+		for(int i = 0; i<4;i++){
+			std::thread t(computePixelValues, i*125, (i+1)*125, std::ref(window), std::ref(camera), modelTriangles);
+			threads.push_back(std::move(t));
+		}
+
+		for(auto &t : threads){
+
+				t.join();
+			}
+
+	
+
+}
+
+
+void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &camera, bool colour,bool orbit, bool raytrace)
 {
 
 	std::vector<CanvasTriangle> canvasTriangles = convertModelToCanvas(vertices, window, camera);
 
 	window.clearPixels();
+
+	if(orbit == true){
+
+		camera.rotateY(true);
+
+		camera.lookAt(glm::vec3(0,0,0));
+	}
+
+	if(raytrace == true){
+
+		drawRasterisedScene(window, camera,vertices);
+		return;
+	}
 
 	for (int i = 0; i < canvasTriangles.size(); i++)
 	{
@@ -494,32 +631,7 @@ void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureT
 	drawTriangle(canvasTriangle, window, Colour(255, 255, 255), camera);
 }
 
-void draw(DrawingWindow &window)
-{
-	window.clearPixels();
-
-	glm::vec3 topLeft(255, 0, 0);	   // red
-	glm::vec3 topRight(0, 0, 255);	   // blue
-	glm::vec3 bottomRight(0, 255, 0);  // green
-	glm::vec3 bottomLeft(255, 255, 0); // yellow
-
-	std::vector<glm::vec3> left = interpolateThreeElementValues(topLeft, bottomLeft, HEIGHT);
-	std::vector<glm::vec3> right = interpolateThreeElementValues(topRight, bottomRight, HEIGHT);
-	for (size_t y = 0; y < window.height; y++)
-	{
-
-		std::vector<glm::vec3> rowInterpol = interpolateThreeElementValues(left.at(y), right.at(y), WIDTH);
-		for (size_t x = 0; x < window.width; x++)
-		{
-
-			uint32_t colour = (255 << 24) + (int(rowInterpol.at(x).x) << 16) + ((int(rowInterpol.at(x).y)) << 8) + (int(rowInterpol.at(x).z));
-
-			window.setPixelColour(x, y, colour);
-		}
-	}
-}
-
-void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour)
+void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour, bool &orbit, bool &raytrace)
 {
 
 	if (event.type == SDL_KEYDOWN)
@@ -586,171 +698,52 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << std::endl;
 
 			camera.rotateX(true);
-			camera.changeOrientationX(true);
+			
+			camera.lookAt(glm::vec3(0,0,0));
+		
 			std::cout << "That was around the X axis" << std::endl;
 		}
 		else if (event.key.keysym.sym == SDLK_o)
 		{
 
 			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << " ->";
+			
 
-			camera.rotateY(true);
-			camera.changeOrientationY(true);
+			orbit = true;
+		
 
 			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << " " << std::endl;
 			std::cout << "That was around the y axis" << std::endl;
 		}
 		else if (event.key.keysym.sym == SDLK_u)
 		{
-			camera.rotateY(false);
-			camera.changeOrientationY(false);
-
+			
+			orbit = false;
+			camera.orientation = glm::mat3x3();
+			camera.cameraPosition = glm::vec3(0,0,4);
 		}
 		else if (event.key.keysym.sym == SDLK_i)
 		{
 			camera.rotateX(false);
-			camera.changeOrientationX(false);
+			camera.lookAt(glm::vec3(0,0,0));
 		}
 		else if (event.key.keysym.sym == SDLK_1)
 		{
 			colour = !colour;
 		}
-	}
-}
+		else if(event.key.keysym.sym == SDLK_2)
+		{
+			raytrace = !raytrace;
 
-RayTriangleIntersection getClosestIntersectionPoints(Camera &camera, glm::vec3 rayDirection,std::vector<ModelTriangle> modelTriangles){
-
-	RayTriangleIntersection closestIntersection;
-
-	closestIntersection.triangleIndex = modelTriangles.size()+1;
-	float minDist = 999999999.0f;
-
-	for(int i = 0; i < modelTriangles.size(); i++){
-
-		glm::vec3 e0 = modelTriangles[i].vertices[1] - modelTriangles[i].vertices[0];
-		glm::vec3 e1 = modelTriangles[i].vertices[2] - modelTriangles[i].vertices[0];
-		glm::vec3 SPVector = camera.cameraPosition - modelTriangles[i].vertices[0];
-		glm::mat3 DEMatrix(-rayDirection, e0, e1);
-		glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
-
-		float t = possibleSolution.x;
-		float u = possibleSolution.y;
-		float v = possibleSolution.z;
-		
-	
-		if(t < minDist  && (u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) &&(u + v) <= 1.0  && t>=0.0001f){
-
-			minDist = t;
-
-			//closestIntersection.intersectionPoint = camera.cameraPosition + (t * rayDirection);
-			closestIntersection.intersectionPoint = modelTriangles[i].vertices[0] + u*e0 + v*e1;
-			closestIntersection.intersectedTriangle = modelTriangles[i];
-			closestIntersection.distanceFromCamera = t;
-			closestIntersection.triangleIndex = i;
-
-
-
-
+			std::cout<<"Raytrace on"<<std::endl;
 		}
+		else if(event.key.keysym.sym == SDLK_3)
+		{
+			raytrace = !raytrace;
 
-
-	}
-
-	return closestIntersection;
-
-
-
-}
-
-
-void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
-
-
-			glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point);
-			//std::cout<<rayDirection.x<<" "<<rayDirection.y<<" "<<rayDirection.z<<std::endl;
-			RayTriangleIntersection closestIntersection = getClosestIntersectionPoints(camera, rayDirection, modelTriangles);
-
-			if(closestIntersection.triangleIndex != modelTriangles.size()+1){
-				int index = closestIntersection.triangleIndex;
-				Colour colour = modelTriangles[index].colour;
-				uint32_t pixelColour = (255 << 24) + (int(colour.red) << 16) + (int(colour.green) << 8) + (int(colour.blue));
-
-				window.setPixelColour(point.x, point.y, pixelColour);
-				
-
-			}
-}
-
-
-void computePixelValues(int from, int to, DrawingWindow &window, Camera &camera, std::vector<ModelTriangle> modelTriangles){
-
-	for(int i = from; i < to; i++){
-		for(int j = 0; j < window.width; j++){
-			CanvasPoint point(i,j);
-			fastRendering(window, camera, modelTriangles, point);
+			std::cout<<"Raytrace off"<<std::endl;
 		}
 	}
-}
-
-void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<ModelTriangle> modelTriangles){
-
-	window.clearPixels();
-
-	//for(int i = 0; i < WIDTH; i++){
-
-		 std::vector<std::thread> threads = std::vector<std::thread>();
-
-		//for(int j = 0; j < HEIGHT; j++){
-
-			//fastRendering(window, camera, modelTriangles, point);
-			
-
-
-
-		//}
-
-		for(int i = 0; i<4;i++){
-			std::thread t(computePixelValues, i*125, (i+1)*125, std::ref(window), std::ref(camera), modelTriangles);
-			threads.push_back(std::move(t));
-		}
-
-		for(auto &t : threads){
-
-				t.join();
-			}
-
-	//}
-
-}
-
-
-
-
-
-void hello(int x){
-	std::cout<<"hello from thread "<<x<<std::endl;
-}
-
-void thr(){
-
-  std::vector<std::thread> vec;
-
-    for (int i = 0; i < 5; i++) {
-
-        std::thread t(hello,i); 
-        vec.push_back(std::move(t));
-
-		
-    }
-    for (auto& t : vec) {
-        t.join();
-    }
-
-	
-
-
-
-
 }
 
 
@@ -772,20 +765,23 @@ int main(int argc, char *argv[])
 	std::vector<ModelTriangle> modelTriangles = readOBJFile("src/cornell-box.obj", 0.35, colourMap, 2, camera, window);
 
 	bool colour = true;
+	bool orbit = false;
+	bool raytrace = false;
 	 //thr();
 	// drawRasterisedScene(window, camera, modelTriangles);
 	while (true)
 	{
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event))
-			handleEvent(event, window, camera,colour);
+			handleEvent(event, window, camera,colour, orbit,raytrace);
 		// draw(window);
-		//wireFrameRender(modelTriangles, window, camera, colour);
+		draw(modelTriangles, window, camera, colour, orbit,raytrace);
 		
-		drawRasterisedScene(window, camera, modelTriangles);
+		//drawRasterisedScene(window, camera, modelTriangles);
 		zBuffer = std::vector<double>(WIDTH * HEIGHT, 0.0);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}
 }
+
