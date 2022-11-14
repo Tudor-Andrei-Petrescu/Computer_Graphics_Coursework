@@ -24,33 +24,33 @@
 
 #include<thread>
 
-#include <mutex>
-
-
-
 #define WIDTH 500
 #define HEIGHT 500
 
-std::mutex mu;
+enum lightType {PROXIMITY,AOI,SPECULAR,AMBIENT,GOURAUD};
 
 std::vector<double> zBuffer;
 
 
 
 
-class Camera
-{
+class Camera{
 
 public:
 	glm::vec3 cameraPosition;
 	glm::mat3x3 orientation;
+	glm::vec3 lightSource = glm::vec3(0,0.7,0);
+
+
 	float focalLength;
 	float planeScale;
 
+	int lightType = -1;
+	
+
 	double angle = 5 * M_PI / 180;
 
-	Camera(glm::vec3 cameraPosition, glm::mat3x3 orientation, float focalLength, float planeScale)
-	{
+	Camera(glm::vec3 cameraPosition, glm::mat3x3 orientation, float focalLength, float planeScale){
 
 		this->cameraPosition = cameraPosition;
 		this->orientation = orientation;
@@ -58,47 +58,38 @@ public:
 		this->planeScale = planeScale;
 	}
 
-	void increaseX()
-	{
+	void increaseX(){
 
 		this->cameraPosition.x += 1.0;
 	}
 
-	void decreaseX()
-	{
+	void decreaseX(){
 
 		this->cameraPosition.x -= 1.0;
 	}
 
-	void increaseY()
-	{
+	void increaseY(){
 
 		this->cameraPosition.y += 1.0;
 	}
 
-	void decreaseY()
-	{
+	void decreaseY(){
 
 		this->cameraPosition.y -= 1.0;
 	}
 
-	void increaseZ()
-	{
+	void increaseZ(){
 
 		this->cameraPosition.z += 1.0;
 
-		std::cout << this->cameraPosition.z << " is z value now" << std::endl;
 	}
 
-	void decreaseZ()
-	{
+	void decreaseZ(){
 
 		this->cameraPosition.z -= 1.0;
-		std::cout << this->cameraPosition.z << " is z value now" << std::endl;
 	}
 
-	void rotateX(bool clockWise)
-	{
+	void rotateX(bool clockWise){
 
 		double dir = angle;
 		if (!clockWise)
@@ -108,8 +99,7 @@ public:
 		this->cameraPosition = rotationMatrix * this->cameraPosition;
 	}
 
-	void rotateY(bool clockWise)
-	{
+	void rotateY(bool clockWise){
 
 		double dir = angle;
 		if (!clockWise)
@@ -118,16 +108,14 @@ public:
 		this->cameraPosition = rotationMatrix * this->cameraPosition;
 	}
 
-	void changeOrientationY(bool clockWise)
-	{
+	void changeOrientationY(bool clockWise){
 		double dir = angle;
 		if(!clockWise) dir = -angle;
 		glm::mat3x3 rotationMatrix = glm::mat3x3(cos(dir), 0.0, sin(dir), 0.0, 1.0, 0.0, -sin(dir), 0.0, cos(dir));
 		this->orientation = rotationMatrix * this->orientation;
 	}
 
-	void changeOrientationX(bool clockWise)
-	{
+	void changeOrientationX(bool clockWise){
 		double dir = angle;
 		if(!clockWise) dir = -angle;
 		glm::mat3x3 rotationMatrix = glm::mat3x3(1.0, 0.0, 0.0, 0.0, cos(dir), -sin(dir), 0.0, sin(dir), cos(dir));
@@ -143,15 +131,13 @@ public:
 	}
 };
 
-std::unordered_map<std::string, Colour> readColours(const std::string &filename)
-{
+std::unordered_map<std::string, Colour> readColours(const std::string &filename){
 
 	std::ifstream inputStream(filename);
 	std::string line;
 	std::unordered_map<std::string, Colour> colourMap;
 
-	while (inputStream && std::getline(inputStream, line))
-	{
+	while (inputStream && std::getline(inputStream, line)){
 
 		std::string colourName = line;
 		std::vector<std::string> splitColourName = split(colourName, ' ');
@@ -174,8 +160,7 @@ std::vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 t
 	glm::vec3 numVal = glm::vec3(numberOfValues - 1, numberOfValues - 1, numberOfValues - 1);
 	glm::vec3 stepValues = (to - from) / numVal;
 	result.push_back(from);
-	for (int i = 1; i < numberOfValues; i++)
-	{
+	for (int i = 1; i < numberOfValues; i++){
 
 		from = from + stepValues;
 		result.push_back(from);
@@ -200,6 +185,7 @@ CanvasPoint getCanvasIntersectionPoint(Camera &camera, glm::vec3 vertex)
 	CanvasPoint p = CanvasPoint(u, v);
 	p.depth = vertex.z;
 
+
 	return p;
 }
 
@@ -211,10 +197,7 @@ glm::vec3 getWorldIntersectionPoint(Camera &camera, CanvasPoint point)
 	
 	float z = -camera.focalLength*camera.planeScale;
 
-
-
 	glm::vec3 worldPoint = camera.orientation * glm::vec3(u, v, z);
-
 
 
 	return glm::normalize(worldPoint);
@@ -222,8 +205,7 @@ glm::vec3 getWorldIntersectionPoint(Camera &camera, CanvasPoint point)
 	
 }
 
-std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalingFactor, std::unordered_map<std::string, Colour> colourMap, float focalLength, Camera &camera, DrawingWindow &window)
-{
+std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalingFactor, std::unordered_map<std::string, Colour> colourMap, float focalLength, Camera &camera, DrawingWindow &window){
 
 	std::ifstream inputStream(filename);
 	std::string line;
@@ -248,28 +230,29 @@ std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalin
 			float z = std::stof(splitLine[3]) * scalingFactor;
 			coordinates.push_back(glm::vec3(x, y, z));
 		}
-
 		else if (splitLine[0] == "f"){
 			
 			int point1 = std::stoi(splitLine[1]) - 1;
 			int point2 = std::stoi(splitLine[2]) - 1;
 			int point3 = std::stoi(splitLine[3]) - 1;
-			objTriangles.push_back(ModelTriangle(coordinates.at(point1), coordinates.at(point2), coordinates.at(point3), currentColour));
+
+			ModelTriangle tr = ModelTriangle(coordinates.at(point1), coordinates.at(point2), coordinates.at(point3), currentColour);
+
+			tr.normal = glm::normalize(glm::cross(tr.vertices[1] - tr.vertices[0], tr.vertices[2] - tr.vertices[0]));
+			objTriangles.push_back(tr);
 		}
 	}
 
 	return objTriangles;
 }
 
-std::vector<float> interpolateSingleFloats(float from, float to, int numberOfValues)
-{
+std::vector<float> interpolateSingleFloats(float from, float to, int numberOfValues){
 
 	float step = (to - from) / (numberOfValues - 1);
 	std::vector<float> result;
 	float generated = from;
 	result.push_back(from);
-	for (int i = 1; i < numberOfValues; i++)
-	{
+	for (int i = 1; i < numberOfValues; i++){
 
 		generated = generated + step;
 		result.push_back(generated);
@@ -278,13 +261,14 @@ std::vector<float> interpolateSingleFloats(float from, float to, int numberOfVal
 	return result;
 }
 
-void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour colour, Camera &camera)
-{
+void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour colour, Camera &camera){
 
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
+
 	float noOfSteps = std::fmax(abs(xDiff), abs(yDiff));
+	
 	float xStepSize = xDiff / noOfSteps;
 	float yStepSize = yDiff / noOfSteps;
 	float zStepSize = zDiff / noOfSteps;
@@ -294,8 +278,7 @@ void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour co
 	float blue = colour.blue;
 	uint32_t pixelColour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + (int(blue));
 
-	for (float i = 0.0; i < noOfSteps; i++)
-	{
+	for (float i = 0.0; i < noOfSteps; i++){
 
 		float x = from.x + (xStepSize * i);
 		float y = from.y + (yStepSize * i);
@@ -340,7 +323,6 @@ void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour,
 
 		std::swap(top, right);
 	}
-
 	if (bottom.y < right.y){
 
 		std::swap(bottom, right);
@@ -353,6 +335,7 @@ void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour,
 	CanvasPoint newPoint = CanvasPoint(x, y);
 
 	drawTriangle(tr, window, colour, camera);
+
 	float z = top.depth - (top.depth - bottom.depth) * (y - top.y) / (bottom.y - top.y);
 
 	for (float Y = std::fmax(0, top.y); Y < std::fmin(y, HEIGHT); Y++)
@@ -385,12 +368,7 @@ std::vector<CanvasTriangle> convertModelToCanvas(std::vector<ModelTriangle> vert
 
 	std::vector<CanvasTriangle> canvasTriangles;
 
-	for (ModelTriangle tr : vertices)
-	{
-
-		float z1 = tr.vertices[0].z - camera.cameraPosition.z;
-		float z2 = tr.vertices[1].z - camera.cameraPosition.z;
-		float z3 = tr.vertices[2].z - camera.cameraPosition.z;
+	for (ModelTriangle tr : vertices){
 
 		CanvasPoint p1 = getCanvasIntersectionPoint(camera, tr.vertices[0]);
 		CanvasPoint p2 = getCanvasIntersectionPoint(camera, tr.vertices[1]);
@@ -449,44 +427,56 @@ RayTriangleIntersection getClosestIntersectionPoints(glm::vec3 cameraPosition, g
 void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
 
 
-			glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point);
-			RayTriangleIntersection closestIntersection = getClosestIntersectionPoints(camera.cameraPosition, rayDirection, modelTriangles);
+	glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point);
+	RayTriangleIntersection closestIntersection = getClosestIntersectionPoints(camera.cameraPosition, rayDirection, modelTriangles) ;
 
-			if(closestIntersection.triangleIndex != modelTriangles.size()+1){
-				int index = closestIntersection.triangleIndex;
-				Colour colour = closestIntersection.intersectedTriangle.colour;
+	if(closestIntersection.triangleIndex != modelTriangles.size()+1){
 
-				glm::vec3 lightSource = glm::vec3(0,0.7,0);
-				RayTriangleIntersection shadow = getClosestIntersectionPoints(lightSource,closestIntersection.intersectionPoint - lightSource, modelTriangles);
+		int index = closestIntersection.triangleIndex;
+		Colour colour = closestIntersection.intersectedTriangle.colour;
 
-				if(shadow.triangleIndex != modelTriangles.size()+1){
+		RayTriangleIntersection shadow = getClosestIntersectionPoints(camera.lightSource,closestIntersection.intersectionPoint - camera.lightSource, modelTriangles);
 
+		float distance = glm::length(closestIntersection.intersectionPoint - camera.lightSource);
 
-						float red = int(colour.red);
-						float green = int(colour.green); 
-						float blue = int(colour.blue); 	
+		float red = int(colour.red);
+		float green = int(colour.green);
+		float blue = int(colour.blue);
+		float brightness = (2.0f/(7.0f*M_1_PI*distance*distance));
 
+		if(camera.lightType == PROXIMITY || camera.lightType == AOI){
 
-					if(shadow.triangleIndex != closestIntersection.triangleIndex){
+			
+			if(brightness > 1.0f){
 
-						
-						red *=0.4;
-						green *=0.4;
-						blue *=0.4;
-						
-					}
-					
-					uint32_t pixelColour = (255 << 24) + ( int(red) << 16)+ (int(green) << 8) + (int(blue));
-					window.setPixelColour(point.x,point.y,pixelColour);
+				brightness = 1.0f;
+			}
 
+			if(camera.lightType == AOI){
+
+				float aoi = glm::dot(closestIntersection.intersectedTriangle.normal, glm::normalize(camera.lightSource - closestIntersection.intersectionPoint));
+			
+				if(aoi < 0.0f || aoi > 1.0f){
+
+					aoi = 1.0f;
 
 				}
 
-				
-				
-				
+			brightness *= aoi;
 
 			}
+			
+			red *= brightness;
+			green *= brightness; 
+			blue *= brightness;
+		}
+
+	
+
+		uint32_t pixelColour = (255 << 24) + ( int(red) << 16)+ (int(green) << 8) + (int(blue));
+		window.setPixelColour(point.x,point.y,pixelColour);
+
+	}
 }
 
 
@@ -505,19 +495,19 @@ void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<Mode
 
 	window.clearPixels();
 
-	
+	std::vector<std::thread> threads = std::vector<std::thread>();
 
-		 std::vector<std::thread> threads = std::vector<std::thread>();
+	for(int i = 0; i<4;i++){
 
-		for(int i = 0; i<4;i++){
 			std::thread t(computePixelValues, i*125, (i+1)*125, std::ref(window), std::ref(camera), modelTriangles);
 			threads.push_back(std::move(t));
+			
 		}
 
-		for(auto &t : threads){
+	for(auto &t : threads){
 
-				t.join();
-			}
+			t.join();
+		}
 
 	
 
@@ -544,24 +534,22 @@ void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &ca
 		return;
 	}
 
-	for (int i = 0; i < canvasTriangles.size(); i++)
-	{
-		if (colour == false)
-		{
+	for (int i = 0; i < canvasTriangles.size(); i++){
+
+		if (colour == false){
 
 			drawTriangle(canvasTriangles[i], window, Colour(255, 255, 255), camera);
 		}
-		else
-		{
+		else{
 
 			if (camera.cameraPosition.z != 0)
+
 				drawFilledTriangle(canvasTriangles[i], window, vertices[i].colour, camera);
 		}
 	}
 }
 
-void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureTriangle, DrawingWindow &window, TextureMap textureMap, Camera &camera)
-{
+void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureTriangle, DrawingWindow &window, TextureMap textureMap, Camera &camera){
 
 	glm::mat3x3 canvasMatrix = glm::mat3x3(canvasTriangle.v0().x, canvasTriangle.v0().y, 1,
 										   canvasTriangle.v1().x, canvasTriangle.v1().y, 1,
@@ -592,8 +580,7 @@ void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureT
 
 	float x = top.x - (top.x - bottom.x) * (right.y - top.y) / (bottom.y - top.y);
 
-	for (float Y = top.y; Y < right.y; Y++)
-	{
+	for (float Y = top.y; Y < right.y; Y++){
 
 		float leftX = top.x - (top.x - x) * (Y - top.y) / (right.y - top.y);
 		float rightX = top.x - (top.x - right.x) * (Y - top.y) / (right.y - top.y);
@@ -634,11 +621,9 @@ void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureT
 void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour, bool &orbit, bool &raytrace)
 {
 
-	if (event.type == SDL_KEYDOWN)
-	{
+	if (event.type == SDL_KEYDOWN){
 
-		if (event.key.keysym.sym == SDLK_0)
-		{
+		if (event.key.keysym.sym == SDLK_0){
 
 			CanvasPoint p1(rand() % WIDTH, rand() % HEIGHT);
 			CanvasPoint p2(rand() % WIDTH, rand() % HEIGHT);
@@ -647,108 +632,110 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 			Colour colour(rand() % 256, rand() % 256, rand() % 256);
 			drawTriangle(tr, window, colour, camera);
 		}
-		else if (event.key.keysym.sym == SDLK_f)
-		{
+		else if (event.key.keysym.sym == SDLK_f){
 
 			CanvasPoint p1(rand() % WIDTH, rand() % HEIGHT);
 			CanvasPoint p2(rand() % WIDTH, rand() % HEIGHT);
 			CanvasPoint p3(rand() % WIDTH, rand() % HEIGHT);
+
 			CanvasTriangle tr(p1, p2, p3);
+
 			Colour colour(rand() % 256, rand() % 256, rand() % 256);
 
 			drawFilledTriangle(tr, window, colour, camera);
 		}
-		else if (event.key.keysym.sym == SDLK_a)
-		{
+		else if (event.key.keysym.sym == SDLK_a){
 
-			std::cout << camera.cameraPosition.x << " cameraX initially";
 			camera.increaseX();
-			std::cout << " " << camera.cameraPosition.x << " and cameraX after" << std::endl;
 		}
-		else if (event.key.keysym.sym == SDLK_d)
-		{
+		else if (event.key.keysym.sym == SDLK_d){
 
 			camera.decreaseX();
 		}
-		else if (event.key.keysym.sym == SDLK_w)
-		{
+		else if (event.key.keysym.sym == SDLK_w){
 
 			camera.decreaseY();
 		}
-		else if (event.key.keysym.sym == SDLK_s)
-		{
+		else if (event.key.keysym.sym == SDLK_s){
 
 			camera.increaseY();
 		}
-		else if (event.key.keysym.sym == SDLK_UP)
-		{
+		else if (event.key.keysym.sym == SDLK_UP){
 
 			camera.decreaseZ();
 		}
-		else if (event.key.keysym.sym == SDLK_DOWN)
-		{
+		else if (event.key.keysym.sym == SDLK_DOWN){
 
 			camera.increaseZ();
 		}
-		else if (event.key.keysym.sym == SDLK_k)
-		{
-
-			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << " ->";
-
-			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << std::endl;
+		else if (event.key.keysym.sym == SDLK_k){
 
 			camera.rotateX(true);
 			
 			camera.lookAt(glm::vec3(0,0,0));
 		
-			std::cout << "That was around the X axis" << std::endl;
 		}
-		else if (event.key.keysym.sym == SDLK_o)
-		{
-
-			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << " ->";
-			
+		else if (event.key.keysym.sym == SDLK_o){
 
 			orbit = true;
-		
-
-			std::cout << camera.cameraPosition.x << " " << camera.cameraPosition.y << " " << camera.cameraPosition.z << " " << std::endl;
-			std::cout << "That was around the y axis" << std::endl;
 		}
-		else if (event.key.keysym.sym == SDLK_u)
-		{
+		else if (event.key.keysym.sym == SDLK_u){
 			
 			orbit = false;
+
 			camera.orientation = glm::mat3x3();
+
 			camera.cameraPosition = glm::vec3(0,0,4);
 		}
-		else if (event.key.keysym.sym == SDLK_i)
-		{
+		else if (event.key.keysym.sym == SDLK_i){
+
 			camera.rotateX(false);
+
 			camera.lookAt(glm::vec3(0,0,0));
 		}
-		else if (event.key.keysym.sym == SDLK_1)
-		{
+		else if (event.key.keysym.sym == SDLK_1){
+
 			colour = !colour;
 		}
-		else if(event.key.keysym.sym == SDLK_2)
-		{
+		else if(event.key.keysym.sym == SDLK_2){
+
 			raytrace = !raytrace;
 
 			std::cout<<"Raytrace on"<<std::endl;
 		}
-		else if(event.key.keysym.sym == SDLK_3)
-		{
-			raytrace = !raytrace;
+		else if(event.key.keysym.sym == SDLK_3){
 
-			std::cout<<"Raytrace off"<<std::endl;
+
+			if(camera.lightType == PROXIMITY){
+
+				camera.lightType = -1;
+				std::cout<<"Proximity light off"<<std::endl;
+			}
+
+			else{
+				camera.lightType = PROXIMITY;
+				std::cout<<"Proximity light on"<<std::endl;
+			}
+		}
+		else if(event.key.keysym.sym == SDLK_4){
+
+			if(camera.lightType == AOI){
+
+				camera.lightType = -1;
+				std::cout<<"AOI light off"<<std::endl;
+			}
+
+			else{
+				camera.lightType = AOI;
+				std::cout<<"AOI light on"<<std::endl;
+			}
 		}
 	}
 }
 
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]){
+
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
 	srand(time(NULL));
@@ -767,14 +754,13 @@ int main(int argc, char *argv[])
 	bool colour = true;
 	bool orbit = false;
 	bool raytrace = false;
-	 //thr();
-	// drawRasterisedScene(window, camera, modelTriangles);
-	while (true)
-	{
+	
+	while (true){
+
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event))
 			handleEvent(event, window, camera,colour, orbit,raytrace);
-		// draw(window);
+	
 		draw(modelTriangles, window, camera, colour, orbit,raytrace);
 		
 		//drawRasterisedScene(window, camera, modelTriangles);
