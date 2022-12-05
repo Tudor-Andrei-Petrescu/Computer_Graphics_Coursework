@@ -27,7 +27,9 @@
 #define WIDTH 500
 #define HEIGHT 500
 
-enum lightType {PROXIMITY,AOI,SPECULAR,AMBIENT,GOURAUD};
+enum lightType {PROXIMITY,AOI,SPECULAR,AMBIENT};
+
+enum shading {GOURAUD, PHONG};
 
 std::vector<double> zBuffer;
 
@@ -39,14 +41,18 @@ class Camera{
 public:
 	glm::vec3 cameraPosition;
 	glm::mat3x3 orientation;
-	glm::vec3 lightSource = glm::vec3(0,0.7,0);
+	glm::vec3 lightSource = glm::vec3(0,0.7,0.5);
 
 
 	float focalLength;
 	float planeScale;
 
 	int lightType = -1;
+	int shading = -1;
 	
+	bool mirror = false;
+
+		
 
 	double angle = 5 * M_PI / 180;
 
@@ -129,6 +135,30 @@ public:
 		glm::vec3 y = glm::cross(x,z);
 		orientation = glm::mat3x3(x,y,-z);
 	}
+
+	void increaseLightX(){
+
+		this->lightSource.x += 0.1;
+	}
+
+	void decreaseLightX(){
+
+		this->lightSource.x -= 0.1;
+	}
+
+	void increaseLightY(){
+
+		this->lightSource.y += 0.1;
+	}
+
+	void decreaseLightY(){
+
+		this->lightSource.y -= 0.1;
+	}
+	
+	void resetLight(){
+		this->lightSource = glm::vec3(0,0.7,0.5);
+	}
 };
 
 std::unordered_map<std::string, Colour> readColours(const std::string &filename){
@@ -205,6 +235,7 @@ glm::vec3 getWorldIntersectionPoint(Camera &camera, CanvasPoint point)
 	
 }
 
+
 std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalingFactor, std::unordered_map<std::string, Colour> colourMap, float focalLength, Camera &camera, DrawingWindow &window){
 
 	std::ifstream inputStream(filename);
@@ -236,11 +267,55 @@ std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalin
 			int point2 = std::stoi(splitLine[2]) - 1;
 			int point3 = std::stoi(splitLine[3]) - 1;
 
+
+
 			ModelTriangle tr = ModelTriangle(coordinates.at(point1), coordinates.at(point2), coordinates.at(point3), currentColour);
 
+			tr.vertexIndices[0] = point1;
+			tr.vertexIndices[1] = point2;
+			tr.vertexIndices[2] = point3;
+	
 			tr.normal = glm::normalize(glm::cross(tr.vertices[1] - tr.vertices[0], tr.vertices[2] - tr.vertices[0]));
 			objTriangles.push_back(tr);
 		}
+
+		int size = coordinates.size();
+
+		std::vector<glm::vec3> coordNormals;
+		std::vector<int> pointsFrequency;
+
+		for(int i = 0; i < size; i++ ){
+
+			coordNormals.push_back(glm::vec3(0,0,0));
+			pointsFrequency.push_back(0);
+		}
+
+		for (ModelTriangle tr : objTriangles){
+
+			coordNormals[tr.vertexIndices[0]] += tr.normal;
+			coordNormals[tr.vertexIndices[1]] += tr.normal;
+			coordNormals[tr.vertexIndices[2]] += tr.normal;
+
+			pointsFrequency[tr.vertexIndices[0]]++;
+			pointsFrequency[tr.vertexIndices[1]]++;
+			pointsFrequency[tr.vertexIndices[2]]++;
+
+
+			
+		}
+
+
+		for(ModelTriangle tr : objTriangles){
+
+			tr.vertexNormals[0] = glm::normalize(coordNormals[tr.vertexIndices[0]] / (float)pointsFrequency[tr.vertexIndices[0]]);
+			tr.vertexNormals[1] = glm::normalize(coordNormals[tr.vertexIndices[1]] / (float)pointsFrequency[tr.vertexIndices[1]]);
+			tr.vertexNormals[2] = glm::normalize(coordNormals[tr.vertexIndices[2]]  / (float)pointsFrequency[tr.vertexIndices[2]]);
+
+			
+		}
+
+		
+
 	}
 
 	return objTriangles;
@@ -424,6 +499,84 @@ RayTriangleIntersection getClosestIntersectionPoints(glm::vec3 cameraPosition, g
 
 }
 
+
+glm::vec3 getBarycentricCoordinates(glm::vec3 point, ModelTriangle triangle){
+
+	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
+	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
+	glm::vec3 e2 = point - triangle.vertices[0];
+
+	float d00 = glm::dot(e0, e0);
+	float d01 = glm::dot(e0, e1);
+	float d11 = glm::dot(e1, e1);
+	float d20 = glm::dot(e2, e0);
+	float d21 = glm::dot(e2, e1);
+	float denom = d00 * d11 - d01 * d01;
+	float v = (d11 * d20 - d01 * d21) / denom;
+	float w = (d00 * d21 - d01 * d20) / denom;
+
+	float u = 1.0f - v - w;
+	std::cout<<u<<" "<<v<<" "<<w<<std::endl;
+	return glm::vec3(u, v, w);
+
+}
+
+float proximity(glm::vec3 point, glm::vec3 light){
+
+	float distance = glm::length(point - light);
+
+	float brightness =(1.0f/(3.0f*M_1_PI*distance*distance));
+
+		if(brightness > 1.0f){
+
+				brightness = 1.0f;
+			}
+
+		return brightness;
+
+
+}
+
+float angleOfIncidence(RayTriangleIntersection closestIntersection, Camera camera){
+
+	float aoi = glm::dot(closestIntersection.intersectedTriangle.normal, glm::normalize(camera.lightSource - closestIntersection.intersectionPoint));
+
+
+	
+	if(aoi < 0.0f || aoi > 1.0f){
+
+		aoi = 1.0f;
+
+
+	}
+
+
+	return aoi;
+
+}
+
+float specular(RayTriangleIntersection closestIntersection, Camera camera){
+
+	glm::vec3 reflectedLight = glm::normalize(closestIntersection.intersectionPoint - camera.lightSource) - 2.0f * glm::dot(glm::normalize(closestIntersection.intersectionPoint - camera.lightSource), closestIntersection.intersectedTriangle.normal) * closestIntersection.intersectedTriangle.normal;
+	float specular = glm::dot(reflectedLight, glm::normalize(camera.cameraPosition - closestIntersection.intersectionPoint));
+
+				
+	specular = pow(specular, 256.0f);
+
+	if(specular < 0.0f){
+
+		specular = 0.0f;
+	}
+
+	if(specular > 1.0f){
+
+		specular = 1.0f;
+	}
+
+	return specular;
+
+}
+
 void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
 
 
@@ -432,45 +585,316 @@ void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriang
 
 	if(closestIntersection.triangleIndex != modelTriangles.size()+1){
 
-		int index = closestIntersection.triangleIndex;
+		
+
 		Colour colour = closestIntersection.intersectedTriangle.colour;
 
 		RayTriangleIntersection shadow = getClosestIntersectionPoints(camera.lightSource,closestIntersection.intersectionPoint - camera.lightSource, modelTriangles);
 
-		float distance = glm::length(closestIntersection.intersectionPoint - camera.lightSource);
+		//float distance = glm::length(closestIntersection.intersectionPoint - camera.lightSource);
 
 		float red = int(colour.red);
 		float green = int(colour.green);
 		float blue = int(colour.blue);
-		float brightness = (2.0f/(7.0f*M_1_PI*distance*distance));
+		float brightness = proximity(closestIntersection.intersectionPoint,camera.lightSource);
 
-		if(camera.lightType == PROXIMITY || camera.lightType == AOI){
-
+		if(camera.mirror == true && closestIntersection.intersectedTriangle.colour.name == "newmtl Blue"){
 			
-			if(brightness > 1.0f){
+			glm::vec3 normal = closestIntersection.intersectedTriangle.normal;
+			glm::vec3 rayDirNormal = glm::normalize(closestIntersection.intersectionPoint - camera.cameraPosition);
+			glm::vec3 reflected= rayDirNormal - 2.0f * glm::dot(rayDirNormal,normal) * normal;
+			RayTriangleIntersection reflection = getClosestIntersectionPoints(closestIntersection.intersectionPoint, reflected, modelTriangles);
+			
+			if(reflection.intersectedTriangle.colour.name != "newmtl Blue"){
 
-				brightness = 1.0f;
+				red = int(reflection.intersectedTriangle.colour.red) *0.75f;
+				green = int(reflection.intersectedTriangle.colour.green) * 0.75f;
+				blue = int(reflection.intersectedTriangle.colour.blue) * 0.75f;
+			
 			}
 
-			if(camera.lightType == AOI){
-
-				float aoi = glm::dot(closestIntersection.intersectedTriangle.normal, glm::normalize(camera.lightSource - closestIntersection.intersectionPoint));
-			
-				if(aoi < 0.0f || aoi > 1.0f){
-
-					aoi = 1.0f;
-
-				}
-
-			brightness *= aoi;
-
-			}
-			
-			red *= brightness;
-			green *= brightness; 
-			blue *= brightness;
 		}
 
+
+		if(camera.lightType != -1){
+
+		if(camera.lightType == AOI || camera.lightType == SPECULAR){
+			float aoi = angleOfIncidence(closestIntersection, camera);
+			brightness *= aoi;
+
+			if(camera.lightType == SPECULAR){
+
+			float spec = specular(closestIntersection, camera);
+			brightness = brightness + 0.7f*spec;
+			
+		}
+		}
+		
+		if(camera.lightType == AMBIENT){
+
+			// if(shadow.triangleIndex != closestIntersection.triangleIndex && shadow.triangleIndex != modelTriangles.size()+1){
+
+
+			// 	red *=0.8;
+			// 	green *=0.8;
+			// 	blue *=0.8;
+
+			// }
+
+			if(brightness < 0.3f){
+
+				brightness = 0.3f;
+			}
+		}
+
+		red *= brightness;
+		green *= brightness; 
+		blue *= brightness;
+		}
+
+		if(camera.shading != -1){
+
+			glm::vec3 barycentric = getBarycentricCoordinates(closestIntersection.intersectionPoint, closestIntersection.intersectedTriangle);
+
+			float u = barycentric.x;
+			float v = barycentric.y;
+			float w = barycentric.z;
+			glm::vec3 lightNormalised = glm::normalize(camera.lightSource - closestIntersection.intersectionPoint);
+
+			if(camera.shading == GOURAUD){
+				
+				// ModelTriangle tr0 = ModelTriangle(glm::vec3(0,0,0),glm::vec3(0,0,0),glm::vec3(0,0,0),Colour(0,0,0));
+				// ModelTriangle tr1 = ModelTriangle(glm::vec3(0,0,0),glm::vec3(0,0,0),glm::vec3(0,0,0),Colour(0,0,0));
+				// ModelTriangle tr2 = ModelTriangle(glm::vec3(0,0,0),glm::vec3(0,0,0),glm::vec3(0,0,0),Colour(0,0,0));
+
+				// tr0.normal = closestIntersection.intersectedTriangle.vertexNormals[0];
+				// tr1.normal = closestIntersection.intersectedTriangle.vertexNormals[1];
+				// tr2.normal = closestIntersection.intersectedTriangle.vertexNormals[2];
+				
+				// RayTriangleIntersection p0 = RayTriangleIntersection(closestIntersection.intersectionPoint,closestIntersection.distanceFromCamera,tr0,closestIntersection.triangleIndex);
+				// RayTriangleIntersection p1 = RayTriangleIntersection(closestIntersection.intersectionPoint,closestIntersection.distanceFromCamera,tr1,closestIntersection.triangleIndex);
+				// RayTriangleIntersection p2 = RayTriangleIntersection(closestIntersection.intersectionPoint,closestIntersection.distanceFromCamera,tr2,closestIntersection.triangleIndex);
+				
+				glm::vec3 p0 = closestIntersection.intersectedTriangle.vertexNormals[0];
+				glm::vec3 p1 = closestIntersection.intersectedTriangle.vertexNormals[1];
+				glm::vec3 p2 = closestIntersection.intersectedTriangle.vertexNormals[2];
+
+				float aoi0 = glm::dot(p0,lightNormalised);
+				float aoi1 = glm::dot(p1,lightNormalised);
+				float aoi2 = glm::dot(p2,lightNormalised);
+
+				// float aoi0 = angleOfIncidence(p0, camera);
+				// float aoi1 = angleOfIncidence(p1, camera);
+				// float aoi2 = angleOfIncidence(p2, camera);
+
+				glm::vec3 reflectedLight0 = glm::normalize(lightNormalised - 2.0f * glm::dot(lightNormalised, p0) * p0);
+				glm::vec3 reflectedLight1 = glm::normalize(lightNormalised - 2.0f * glm::dot(lightNormalised, p1) * p1);
+				glm::vec3 reflectedLight2 = glm::normalize(lightNormalised - 2.0f * glm::dot(lightNormalised, p2) * p2);
+
+				float spec0 = glm::dot(reflectedLight0, lightNormalised);
+			    float spec1 = glm::dot(reflectedLight1, lightNormalised);
+				float spec2 = glm::dot(reflectedLight2, lightNormalised);
+
+				spec0 = pow(spec0, 256.0f);
+				spec1 = pow(spec1, 256.0f);
+				spec2 = pow(spec2, 256.0f);
+
+				if(spec0 <0.0f){
+					spec0 = 0.0f;
+				}
+				if(spec1 <0.0f){
+					spec1 = 0.0f;
+				}
+				if(spec2 <0.0f){
+					spec2 = 0.0f;
+				}
+				if(spec0>1.0f){
+					spec0 = 1.0f;
+				}
+				if(spec1>1.0f){
+					spec1 = 1.0f;
+				}
+				if(spec2>1.0f){
+					spec2 = 1.0f;
+				}
+
+
+				float prox0 = proximity(p0,camera.lightSource);
+				float prox1 = proximity(p1,camera.lightSource);
+				float prox2 = proximity(p2,camera.lightSource);
+
+				float gouraud = u * (aoi0 +prox0+ spec0) + v * (aoi1 +prox1 +spec1) + w * (aoi2 + prox2 + spec2);
+				
+				if(gouraud > 1.0f){
+
+					gouraud = 1.0f;
+				}
+				
+				red*=gouraud;
+				green*=gouraud;
+				blue*=gouraud;
+
+
+				if(red > 255 || red <0){
+					
+					red = 255;
+				}			
+				if(green > 255 || green <0){
+					
+					green = 255;
+				}
+				if(blue > 255 || blue <0){
+					
+					blue = 255;
+				}	
+
+
+			}
+			else if(camera.shading ==PHONG){
+
+			ModelTriangle tr = closestIntersection.intersectedTriangle;
+			glm::vec3 point = tr.vertexNormals[0] * u + tr.vertexNormals[1] * v + tr.vertexNormals[2] * w;
+
+			float aoi = glm::dot(point, glm::normalize(camera.lightSource - closestIntersection.intersectionPoint));
+
+			float prox = proximity(point,camera.lightSource);
+
+			glm::vec3 reflectedLight = glm::normalize(closestIntersection.intersectionPoint - camera.lightSource) - 2.0f * glm::dot(glm::normalize(closestIntersection.intersectionPoint - camera.lightSource), point) * point;
+			float spec = glm::dot(reflectedLight, glm::normalize(camera.cameraPosition - closestIntersection.intersectionPoint));
+
+			spec = pow(spec, 256.0f);
+
+			if(spec < 0.0f){
+
+				spec = 0.0f;
+			}
+
+			if(spec > 1.0f){
+
+				spec = 1.0f;
+			}		
+
+			float phong = aoi + prox + spec;
+
+			if(phong > 1.0f){
+				phong = 1.0f;
+			}
+
+			red*=phong;
+			green*=phong;
+			blue*=phong;
+
+			if(red > 255 || red <0){
+					
+					red = 255;
+				}			
+				if(green > 255 || green <0){
+					
+					green = 255;
+				}
+				if(blue > 255 || blue <0){
+					
+					blue = 255;
+				}	
+
+
+			}
+
+		}
+
+		// if(camera.lightType == PROXIMITY || camera.lightType == AOI || camera.lightType == SPECULAR || camera.lightType == AMBIENT){
+
+			
+		// 	if(brightness > 1.0f){
+
+		// 		brightness = 1.0f;
+		// 	}
+
+			
+
+
+		// 		if(camera.lightType == AOI){
+
+		// 		camera.lightSource = glm::vec3(0,0.7,0.2);
+		// 		//set light source to glm::vec3(0,0.7,0.2)
+		// 		float aoi = glm::dot(closestIntersection.intersectedTriangle.normal, glm::normalize(camera.lightSource - closestIntersection.intersectionPoint));
+			
+		// 		if(aoi < 0.0f || aoi > 1.0f){
+
+		// 			aoi = 1.0f;
+
+
+		// 		}
+
+		// 		 brightness *= aoi;
+		// 		 camera.lightSource = glm::vec3(0,0.7,0);
+
+
+		// 		}
+				
+		// 	if(camera.lightType == SPECULAR){
+
+		// 		glm::vec3 reflectedLight = glm::normalize(closestIntersection.intersectionPoint - camera.lightSource) - 2.0f * glm::dot(glm::normalize(closestIntersection.intersectionPoint - camera.lightSource), closestIntersection.intersectedTriangle.normal) * closestIntersection.intersectedTriangle.normal;
+		// 		float specular = glm::dot(reflectedLight, glm::normalize(camera.cameraPosition - closestIntersection.intersectionPoint));
+
+				
+		// 		specular = pow(specular, 256.0f);
+
+		// 		if(specular < 0.0f){
+
+		// 			specular = 0.0f;
+		// 		}
+
+		// 		if(specular > 1.0f){
+
+		// 			specular = 1.0f;
+		// 		}
+
+
+		// 		brightness = brightness * specular;
+
+		// 		if(brightness>1.0f){
+
+		// 			brightness = 1.0f;
+		// 		}
+		// 	}
+
+		// 	if(camera.lightType == AMBIENT){
+				
+		// 		// brightness += 0.3f;
+		// 		// if(brightness > 1.0f){
+		// 		// 	brightness = 1.0f;
+		// 		// }
+
+		// 		if(shadow.triangleIndex != closestIntersection.triangleIndex && shadow.triangleIndex != modelTriangles.size()+1){
+
+
+		// 				red *=0.8;
+		// 				green *=0.8;
+		// 				blue *=0.8;
+
+		// 			}
+
+		// 		if(brightness < 0.5f){
+
+		// 			brightness = 0.5f;
+		// 		}
+		// 	}
+
+
+		// 	if(camera.shading == GOURAUD){
+
+			
+		// 	}
+
+
+			
+		// 	red *= brightness;
+		// 	green *= brightness; 
+		// 	blue *= brightness;
+		// }
+
+	
 	
 
 		uint32_t pixelColour = (255 << 24) + ( int(red) << 16)+ (int(green) << 8) + (int(blue));
@@ -491,7 +915,7 @@ void computePixelValues(int from, int to, DrawingWindow &window, Camera &camera,
 }
 
 
-void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<ModelTriangle> modelTriangles){
+void drawRayTraced(DrawingWindow &window, Camera &camera, std::vector<ModelTriangle> modelTriangles){
 
 	window.clearPixels();
 
@@ -514,7 +938,7 @@ void drawRasterisedScene(DrawingWindow &window, Camera &camera, std::vector<Mode
 }
 
 
-void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &camera, bool colour,bool orbit, bool raytrace)
+void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &camera, bool colour,bool orbit, bool raytrace,bool sphere,std::vector<ModelTriangle> sphereTr)
 {
 
 	std::vector<CanvasTriangle> canvasTriangles = convertModelToCanvas(vertices, window, camera);
@@ -530,7 +954,12 @@ void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &ca
 
 	if(raytrace == true){
 
-		drawRasterisedScene(window, camera,vertices);
+		if(sphere){
+			drawRayTraced(window, camera, sphereTr);
+			return;
+		}
+
+		drawRayTraced(window, camera,vertices);
 		return;
 	}
 
@@ -618,7 +1047,7 @@ void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureT
 	drawTriangle(canvasTriangle, window, Colour(255, 255, 255), camera);
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour, bool &orbit, bool &raytrace)
+void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour, bool &orbit, bool &raytrace,bool &sphere)
 {
 
 	if (event.type == SDL_KEYDOWN){
@@ -730,6 +1159,97 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 				std::cout<<"AOI light on"<<std::endl;
 			}
 		}
+		else if(event.key.keysym.sym == SDLK_5){
+
+			if(camera.lightType == SPECULAR){
+
+				camera.lightType = -1;
+				std::cout<<"SPECULAR light off"<<std::endl;
+			}
+
+			else{
+				camera.lightType = SPECULAR;
+				std::cout<<"SPECULAR light on"<<std::endl;
+			}
+		}
+		else if(event.key.keysym.sym == SDLK_6){
+
+			if(camera.lightType == AMBIENT){
+
+				camera.lightType = -1;
+				std::cout<<"AMBIENT light off"<<std::endl;
+			}
+
+			else{
+				camera.lightType = AMBIENT;
+				std::cout<<"AMBIENT light on"<<std::endl;
+			}
+		}
+		else if(event.key.keysym.sym == SDLK_p){
+
+			std::cout<<"Sphere on"<<std::endl;
+
+			sphere = !sphere;
+		}
+		else if(event.key.keysym.sym == SDLK_g){
+			
+
+			if(camera.shading == -1){
+			std::cout<<"Gourad on"<<std::endl;
+
+			camera.shading = GOURAUD;
+			camera.lightSource = glm::vec3(-1,3.1,1);
+			}
+			else{
+				std::cout<<"Gourad off"<<std::endl;
+				camera.shading = -1;
+				camera.lightSource = glm::vec3(0,0.7,0.5);
+			}
+
+		}
+		else if(event.key.keysym.sym ==SDLK_7){
+
+				if(camera.shading == -1){
+			std::cout<<"Phong on"<<std::endl;
+
+			camera.shading = PHONG;
+			camera.lightSource = glm::vec3(-1,3.1,1);
+			}
+			else{
+				std::cout<<"Phong off"<<std::endl;
+				camera.shading = -1;
+				camera.lightSource = glm::vec3(0,0.7,0.5);
+			}
+
+		}
+		else if(event.key.keysym.sym == SDLK_LSHIFT){
+			camera.increaseLightX();
+			std::cout<<"Light is now at:"<<camera.lightSource.x<<","<<camera.lightSource.y<<","<<camera.lightSource.z<<std::endl;
+		}
+		else if(event.key.keysym.sym == SDLK_RSHIFT){
+			camera.decreaseLightX();
+			std::cout<<"Light is now at:"<<camera.lightSource.x<<","<<camera.lightSource.y<<","<<camera.lightSource.z<<std::endl;
+		}
+		else if(event.key.keysym.sym == SDLK_LCTRL){
+			camera.increaseLightY();
+			std::cout<<"Light is now at:"<<camera.lightSource.x<<","<<camera.lightSource.y<<","<<camera.lightSource.z<<std::endl;
+		}
+		else if(event.key.keysym.sym == SDLK_RCTRL){
+			camera.decreaseLightY();
+			std::cout<<"Light is now at:"<<camera.lightSource.x<<","<<camera.lightSource.y<<","<<camera.lightSource.z<<std::endl;
+		}
+		else if(event.key.keysym.sym ==SDLK_9){
+			
+			camera.resetLight();
+		}
+		else if(event.key.keysym.sym == SDLK_z){
+			
+			camera.mirror = !camera.mirror;
+
+			
+		}
+		
+		
 	}
 }
 
@@ -750,20 +1270,24 @@ int main(int argc, char *argv[]){
 	TextureMap map = TextureMap("src/texture.ppm");
 	std::unordered_map<std::string, Colour> colourMap = readColours("src/cornell-box.mtl");
 	std::vector<ModelTriangle> modelTriangles = readOBJFile("src/cornell-box.obj", 0.35, colourMap, 2, camera, window);
+	
+	std::vector<ModelTriangle> sphereTr = readOBJFile("src/sphere.obj", 0.35, colourMap, 2, camera, window);
 
 	bool colour = true;
 	bool orbit = false;
 	bool raytrace = false;
+
+	bool sphere = false;
 	
 	while (true){
 
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event))
-			handleEvent(event, window, camera,colour, orbit,raytrace);
+			handleEvent(event, window, camera,colour, orbit,raytrace,sphere);
 	
-		draw(modelTriangles, window, camera, colour, orbit,raytrace);
+		draw(modelTriangles, window, camera, colour, orbit,raytrace,sphere,sphereTr);
 		
-		//drawRasterisedScene(window, camera, modelTriangles);
+		//drawRayTraced(window, camera, modelTriangles);
 		zBuffer = std::vector<double>(WIDTH * HEIGHT, 0.0);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
