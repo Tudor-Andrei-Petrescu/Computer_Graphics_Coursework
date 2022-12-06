@@ -29,7 +29,7 @@
 
 enum lightType {PROXIMITY,AOI,SPECULAR,AMBIENT};
 
-enum shading {GOURAUD, PHONG};
+enum shading {GOURAUD, PHONG,HARD,SOFT};
 
 std::vector<double> zBuffer;
 
@@ -311,16 +311,7 @@ std::vector<ModelTriangle> readOBJFile(const std::string &filename, float scalin
 			tr.vertexNormals[1] = glm::normalize(coordNormals[tr.vertexIndices[1]] / (float)pointsFrequency[tr.vertexIndices[1]]);
 			tr.vertexNormals[2] = glm::normalize(coordNormals[tr.vertexIndices[2]]  / (float)pointsFrequency[tr.vertexIndices[2]]);
 
-					
-			std::cout<<coordNormals[tr.vertexIndices[0]].x<<" "<<coordNormals[tr.vertexIndices[0]].y<<" "<<coordNormals[tr.vertexIndices[0]].z<<std::endl;
-			std::cout<<"Count"<<std::endl;
-			std::cout<<pointsFrequency[tr.vertexIndices[0]]<<std::endl;
-			std::cout<<"------------------"<<std::endl;
-			std::cout<<tr.vertexNormals[0].x<<" "<<tr.vertexNormals[0].y<<" "<<tr.vertexNormals[0].z<<std::endl;
-			std::cout<<"------------------ c'est fini"<<std::endl;
-
-
-
+			
 			
 		}
 
@@ -610,6 +601,28 @@ float specular(RayTriangleIntersection closestIntersection, Camera camera){
 	}
 
 	return specular;
+
+}
+
+std::vector<std::vector<glm::vec3>> getLights(glm::vec3 lightCentre){
+
+	std::vector<std::vector<glm::vec3>> lights;
+
+	for(int i = -2; i < 2; i++){
+
+		std::vector<glm::vec3> light;
+
+		for(int j = -2; j < 2; j++){
+
+			light.push_back(glm::vec3(lightCentre.x + (i*0.05f), lightCentre.y, lightCentre.z+ (j*0.05f)));
+
+		}
+
+		lights.push_back(light);
+
+	}
+
+	return lights;
 
 }
 
@@ -929,6 +942,39 @@ void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriang
 			
 
 		
+		}
+		else if (camera.shading == HARD){
+
+			if(shadow.triangleIndex != modelTriangles.size()+1 && shadow.triangleIndex != closestIntersection.triangleIndex){
+
+
+				red*=0.6f;
+				green*=0.6f;
+				blue*=0.6f;
+			}
+		}
+		else if(camera.shading == SOFT){
+
+			std::vector<std::vector<glm::vec3>> lightPoints = getLights(camera.lightSource);
+
+
+			for(int i = 0; i < lightPoints.size(); i++){
+
+				for(int j = 0; j < lightPoints[i].size();j++){
+					float intensity = 1.0f;
+					RayTriangleIntersection shadowRay = getClosestIntersectionPoints(lightPoints.at(i).at(j),closestIntersection.intersectionPoint - lightPoints.at(i).at(j), modelTriangles);
+
+					if(shadowRay.triangleIndex != modelTriangles.size()+1 && shadowRay.triangleIndex != closestIntersection.triangleIndex){
+
+						intensity-=0.04f;
+					}
+
+					red*=intensity;
+					green*=intensity;
+					blue*=intensity;
+
+				}
+			}
 		}
 
 		}
@@ -1289,6 +1335,33 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 
 			camera.glass = !camera.glass;
 		}
+		else if(event.key.keysym.sym == SDLK_8){
+
+			if(camera.shading == -1){
+			std::cout<<"HARD SHADING on"<<std::endl;
+
+			camera.shading = HARD;
+			}
+			else{
+				std::cout<<"HARD SHADING off"<<std::endl;
+				camera.shading = -1;
+				
+			}
+		}
+		else if(event.key.keysym.sym == SDLK_c){
+
+				if(camera.shading == -1){
+			std::cout<<"SOFT SHADING on"<<std::endl;
+
+			camera.shading = SOFT;
+			}
+			else{
+				std::cout<<"SOFT SHADING off"<<std::endl;
+				camera.shading = -1;
+				
+			}	
+
+		}
 		
 		
 	}
@@ -1319,34 +1392,6 @@ int main(int argc, char *argv[]){
 	bool raytrace = false;
 
 	bool sphere = false;
-
-	glm::vec3 tmp = glm::vec3(0,0,0);
-	int count = 0;
-	glm::vec3 normal1;
-	glm::vec3 normal2;
-	for(ModelTriangle t : modelTriangles){
-		if(t.vertexIndices[0] == 5 || t.vertexIndices[1] == 5 || t.vertexIndices[2] == 5){
-			
-			normal1+= t.normal;
-
-			if(t.vertexIndices[0] == 5)
-			normal2 = t.vertexNormals[0];
-			else if(t.vertexIndices[1] == 5)
-			normal2 = t.vertexNormals[1];
-			else if(t.vertexIndices[2] == 5)
-			normal2 = t.vertexNormals[2];
-			count++;
-		}
-
-
-
-	}
-
-
-	std::cout<<"Normal stored:"<<normal2.x<<","<<normal2.y<<","<<normal2.z<<std::endl;
-	std::cout<<"Count:"<<count<<std::endl;
-	std::cout<<"Normal computed before division:"<<normal1.x<<","<<normal1.y<<","<<normal1.z<<std::endl;
-
 	
 	while (true){
 
