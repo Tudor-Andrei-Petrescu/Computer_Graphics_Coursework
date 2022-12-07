@@ -24,8 +24,10 @@
 
 #include<thread>
 
-#define WIDTH 500
-#define HEIGHT 500
+#include<unistd.h>   
+
+#define WIDTH 640
+#define HEIGHT 480
 
 enum lightType {PROXIMITY,AOI,SPECULAR,AMBIENT};
 
@@ -55,7 +57,7 @@ public:
 
 		
 
-	double angle = 5 * M_PI / 180;
+	double angle = 2 * M_PI / 180;
 
 	Camera(glm::vec3 cameraPosition, glm::mat3x3 orientation, float focalLength, float planeScale){
 
@@ -338,7 +340,7 @@ std::vector<float> interpolateSingleFloats(float from, float to, int numberOfVal
 }
 
 void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour colour, Camera &camera){
-
+	to.x= round(to.x);
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
@@ -363,12 +365,10 @@ void drawLine(CanvasPoint from, CanvasPoint to, DrawingWindow &window, Colour co
 		int ix = int(x);
 		int iy = int(y);
 
-		if (ix + iy * WIDTH <= zBuffer.size())
-		{
+		if (ix + iy * WIDTH <= zBuffer.size()){
 
 			double prev_depth = zBuffer[ix + iy * WIDTH];
-			if ((1.0 / z) >= prev_depth && (ix >= 0 && ix < WIDTH && iy >= 0 && iy < HEIGHT))
-			{
+			if ((1.0 / z) >= prev_depth && (ix >= 0 && ix < WIDTH && iy >= 0 && iy < HEIGHT)){
 				window.setPixelColour(ix, iy, pixelColour);
 				zBuffer[ix + iy * WIDTH] = (1.0 / z);
 			}
@@ -414,8 +414,7 @@ void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour,
 
 	float z = top.depth - (top.depth - bottom.depth) * (y - top.y) / (bottom.y - top.y);
 
-	for (float Y = std::fmax(0, top.y); Y < std::fmin(y, HEIGHT); Y++)
-	{
+	for (float Y = std::fmax(0, top.y); Y < std::fmin(y, HEIGHT); Y++){
 
 		float leftX = top.x - (top.x - x) * (Y - top.y) / (y - top.y);
 		float rightX = top.x - (top.x - right.x) * (Y - top.y) / (right.y - top.y);
@@ -426,8 +425,7 @@ void drawFilledTriangle(CanvasTriangle tr, DrawingWindow &window, Colour colour,
 		drawLine(CanvasPoint(leftX, Y, (leftZ)), CanvasPoint(rightX, Y, (rightZ)), window, colour, camera);
 	}
 
-	for (float Y = std::fmax(0, newPoint.y); Y <= std::fmin(bottom.y, HEIGHT); Y++)
-	{
+	for (float Y = std::fmax(0, newPoint.y); Y <= std::fmin(bottom.y, HEIGHT); Y++){
 
 		float leftX = newPoint.x - (newPoint.x - bottom.x) * (Y - newPoint.y) / (bottom.y - newPoint.y);
 		float rightX = right.x - (right.x - bottom.x) * (Y - right.y) / (bottom.y - right.y);
@@ -507,14 +505,14 @@ glm::vec3 getBarycentricCoordinates(glm::vec3 point, ModelTriangle triangle){
 	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
 	glm::vec3 e2 = point - triangle.vertices[0];
 
-	float d00 = glm::dot(e0, e0);
-	float d01 = glm::dot(e0, e1);
-	float d11 = glm::dot(e1, e1);
-	float d20 = glm::dot(e2, e0);
-	float d21 = glm::dot(e2, e1);
-	float denom = d00 * d11 - d01 * d01;
-	float v = (d11 * d20 - d01 * d21) / denom;
-	float w = (d00 * d21 - d01 * d20) / denom;
+	float dot00 = glm::dot(e0, e0);
+	float dot01 = glm::dot(e0, e1);
+	float dot11 = glm::dot(e1, e1);
+	float dot20 = glm::dot(e2, e0);
+	float dot21 = glm::dot(e2, e1);
+	float denom = dot00 * dot11 - dot01 * dot01;
+	float v = (dot11 * dot20 - dot01 * dot21) / denom;
+	float w = (dot00 * dot21 - dot01 * dot20) / denom;
 
 	float u = 1.0f - v - w;
 	return glm::vec3(u, v, w);
@@ -555,31 +553,6 @@ float angleOfIncidence(RayTriangleIntersection closestIntersection, Camera camer
 
 }
 
-float Aoi(glm::vec3 normal, glm::vec3 light, glm::vec3 point){
-
-	float aoi = glm::dot(normal, glm::normalize(light - point));
-
-	if(aoi < 0.0f || aoi > 1.0f){
-
-		aoi = 1.0f;
-	}
-
-
-	return aoi;
-}
-
-float Specular(glm::vec3 normal, glm::vec3 light, glm::vec3 point, glm::vec3 cameraPosition){
-
-	glm::vec3 reflectedLight = glm::normalize(point - light) - 2.0f * glm::dot(point - light, normal) * normal;
-	float specular = glm::dot(reflectedLight, glm::normalize(cameraPosition - point));
-
-	if(specular < 0.0f || specular > 1.0f){
-
-		specular = 1.0f;
-	}
-	
-	return specular;
-	}
 
 
 float specular(RayTriangleIntersection closestIntersection, Camera camera){
@@ -626,7 +599,11 @@ std::vector<std::vector<glm::vec3>> getLights(glm::vec3 lightCentre){
 
 }
 
+
+
 void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriangle> modelTriangles,CanvasPoint point){
+
+	//LORD PLEASE FORGIVE ME FOR I WHAT I HAVE DONE TO THIS SECTION OF THE CODE 
 
 
 	glm::vec3 rayDirection = getWorldIntersectionPoint(camera, point);
@@ -640,7 +617,6 @@ void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriang
 
 		RayTriangleIntersection shadow = getClosestIntersectionPoints(camera.lightSource,closestIntersection.intersectionPoint - camera.lightSource, modelTriangles);
 
-		//float distance = glm::length(closestIntersection.intersectionPoint - camera.lightSource);
 
 		float red = int(colour.red);
 		float green = int(colour.green);
@@ -655,117 +631,17 @@ void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriang
 			RayTriangleIntersection reflection = getClosestIntersectionPoints(closestIntersection.intersectionPoint, reflected, modelTriangles);
 			
 			if(reflection.intersectedTriangle.colour.name != "newmtl Blue"){
-
-				red = int(reflection.intersectedTriangle.colour.red) *0.8f;
-				green = int(reflection.intersectedTriangle.colour.green) * 0.8f;
-				blue = int(reflection.intersectedTriangle.colour.blue) * 0.8f;
+				
+			
+				red =(int(reflection.intersectedTriangle.colour.red)*0.75) ;
+				green = (int(reflection.intersectedTriangle.colour.green)*0.75);
+				blue = (int(reflection.intersectedTriangle.colour.blue)*0.75);
 			
 			}
 
 		}
 
-		if(camera.glass == true && closestIntersection.intersectedTriangle.colour.name == "newmtl Blue" ){
-
-			glm::vec3 normal = closestIntersection.intersectedTriangle.normal;
-
-			float n1 = 1.0f; //air
-			float n2 = 1.5f; //glass
-	
-
-			
-
-			glm::vec3 rayDirNormal = glm::normalize(closestIntersection.intersectionPoint - camera.cameraPosition); //I
-			float NdotI = (glm::dot(rayDirNormal,normal));
-
-			float cosi = NdotI/(glm::length(rayDirNormal)*glm::length(normal)); //cos(theta1)
-
-			if(cosi <0.0f){
-
-				cosi = -cosi;
-				
-			}
-			else{
-				
-				normal = -normal;
-				std::swap(n1,n2);
-			
-			}
-			
-			float n = n1/n2;
-			//aoi = glm::acos(aoi);
-
-			float aor = std::asin(n * std::sin(std::acos(cosi))); //theta2
-
-			float c1 = NdotI;
-
-			float c2 = 1.0f - n*n*(1 - cosi * cosi);
-			glm::vec3 refracted;
-			// if(c2 < 0.0f){
-			// 	c2 = 0.0f;
-			// 	refracted = glm::vec3(0,0,0);
-			// }
-			//else{
-				c2 = glm::sqrt(c2);
-			    refracted = n * rayDirNormal + (n*c1 -c2) * normal;
-			//}
-			
-
-			RayTriangleIntersection refraction = getClosestIntersectionPoints(closestIntersection.intersectionPoint, refracted, modelTriangles);
-
-			glm::vec3 reflected= rayDirNormal - 2.0f * NdotI * normal;
-			RayTriangleIntersection reflection = getClosestIntersectionPoints(closestIntersection.intersectionPoint, reflected, modelTriangles);
-
-
-			//Fresnel equation tells the ratio of reflected and refracted light
-
-			float frRef = (n2 * cos(cosi) - n1 * cos(aor))/(n2 * cos(cosi) + n1 * cos(aor));
-			//frRef = frRef * frRef;
-			float frRefr = (n1 * cos(aor) - n2 * cos(cosi))/(n1 * cos(aor) + n2 * cos(cosi));
-			//frRefr = frRefr * frRefr;
-			float reflRatio = (frRef * frRefr)/2.0f;
-			float refrRatio = 1.0f - reflRatio;
-
-			// if(1-c1*c1>=1){
-			// 	reflRatio = 1.0f;
-			// 	refrRatio = 0.0f;
-			// }
-			red =  int(reflection.intersectedTriangle.colour.red) * reflRatio + int(refraction.intersectedTriangle.colour.red) * refrRatio;
-			green =int(reflection.intersectedTriangle.colour.green) * reflRatio + int(refraction.intersectedTriangle.colour.green) * refrRatio;
-			blue = int(reflection.intersectedTriangle.colour.blue) * reflRatio + int(refraction.intersectedTriangle.colour.blue) * refrRatio;
-
-			
-
-			// if(red >255.0f){
-			// 	red = 255.0f;
-			// }
-			// if(green >255.0f){
-			// 	green = 255.0f;
-			// }
-			// if(blue >255.0f){
-			// 	blue = 255.0f;
-			// }
-
-			// if(red <0.0f){
-			// 	red = 0.0f;
-			// }
-			// if(green <0.0f){
-			// 	green = 0.0f;
-			// }
-			// if(blue <0.0f){
-			// 	blue = 0.0f;
-			// }
-			
-
-			
-
-			
-
-			
-			
-			
-		}	
-
-
+		
 
 		if(camera.lightType != -1){
 
@@ -783,14 +659,7 @@ void fastRendering(DrawingWindow &window, Camera &camera,std::vector<ModelTriang
 		
 		if(camera.lightType == AMBIENT){
 
-			// if(shadow.triangleIndex != closestIntersection.triangleIndex && shadow.triangleIndex != modelTriangles.size()+1){
-
-
-			// 	red *=0.8;
-			// 	green *=0.8;
-			// 	blue *=0.8;
-
-			// }
+		
 
 			if(brightness < 0.3f){
 
@@ -1006,7 +875,7 @@ void drawRayTraced(DrawingWindow &window, Camera &camera, std::vector<ModelTrian
 
 	for(int i = 0; i<4;i++){
 
-			std::thread t(computePixelValues, i*125, (i+1)*125, std::ref(window), std::ref(camera), modelTriangles);
+			std::thread t(computePixelValues, i*120, (i+1)*120, std::ref(window), std::ref(camera), modelTriangles);
 			threads.push_back(std::move(t));
 			
 		}
@@ -1021,19 +890,21 @@ void drawRayTraced(DrawingWindow &window, Camera &camera, std::vector<ModelTrian
 }
 
 
-void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &camera, bool colour,bool orbit, bool raytrace,bool sphere,std::vector<ModelTriangle> sphereTr)
+void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &camera, bool colour,bool lookAt, bool raytrace,bool sphere,std::vector<ModelTriangle> sphereTr)
 {
 
 	std::vector<CanvasTriangle> canvasTriangles = convertModelToCanvas(vertices, window, camera);
 
 	window.clearPixels();
 
-	if(orbit == true){
+	if(lookAt == true){
 
 		camera.rotateY(true);
 
 		camera.lookAt(glm::vec3(0,0,0));
 	}
+	
+
 
 	if(raytrace == true){
 
@@ -1054,7 +925,7 @@ void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &ca
 		}
 		else{
 
-			if (camera.cameraPosition.z != 0)
+			if (camera.cameraPosition.z !=0)
 
 				drawFilledTriangle(canvasTriangles[i], window, vertices[i].colour, camera);
 		}
@@ -1130,7 +1001,7 @@ void drawTexturedTriangle(CanvasTriangle canvasTriangle, CanvasTriangle textureT
 	drawTriangle(canvasTriangle, window, Colour(255, 255, 255), camera);
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour, bool &orbit, bool &raytrace,bool &sphere)
+void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &colour, bool &lookAt, bool &raytrace,bool &sphere)
 {
 
 	if (event.type == SDL_KEYDOWN){
@@ -1189,11 +1060,11 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 		}
 		else if (event.key.keysym.sym == SDLK_o){
 
-			orbit = true;
+			lookAt = true;
 		}
 		else if (event.key.keysym.sym == SDLK_u){
 			
-			orbit = false;
+			lookAt = false;
 
 			camera.orientation = glm::mat3x3();
 
@@ -1321,10 +1192,6 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 			camera.decreaseLightY();
 			std::cout<<"Light is now at:"<<camera.lightSource.x<<","<<camera.lightSource.y<<","<<camera.lightSource.z<<std::endl;
 		}
-		else if(event.key.keysym.sym ==SDLK_9){
-			
-			camera.resetLight();
-		}
 		else if(event.key.keysym.sym == SDLK_z){
 			
 			camera.mirror = !camera.mirror;
@@ -1388,24 +1255,37 @@ int main(int argc, char *argv[]){
 	std::vector<ModelTriangle> sphereTr = readOBJFile("src/sphere.obj", 0.35, colourMap, 2, camera, window);
 
 	bool colour = true;
-	bool orbit = false;
+	bool lookAt = false;
 	bool raytrace = false;
 
 	bool sphere = false;
+
 	
+
+	camera.lightType = -1;
+
+	
+	int j = 632;
+	raytrace = true;
+	sphere = true;
+	camera.decreaseZ();
 	while (true){
 
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event))
-			handleEvent(event, window, camera,colour, orbit,raytrace,sphere);
+			handleEvent(event, window, camera,colour, lookAt,raytrace,sphere);
 	
-		draw(modelTriangles, window, camera, colour, orbit,raytrace,sphere,sphereTr);
+		draw(modelTriangles, window, camera, colour, lookAt,raytrace,sphere,sphereTr);
 		
 		//drawRayTraced(window, camera, modelTriangles);
 		zBuffer = std::vector<double>(WIDTH * HEIGHT, 0.0);
 
+		
+
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
+
+	
 	}
 }
 
