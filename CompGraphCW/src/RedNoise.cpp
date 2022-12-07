@@ -54,6 +54,7 @@ public:
 	
 	bool mirror = false;
 	bool glass = false;
+	bool orbit = false;
 
 		
 
@@ -897,10 +898,11 @@ void draw(std::vector<ModelTriangle> vertices, DrawingWindow &window, Camera &ca
 
 	window.clearPixels();
 
-	if(lookAt == true){
+	if(lookAt == true || camera.orbit == true){
 
 		camera.rotateY(true);
 
+		if(lookAt == true)
 		camera.lookAt(glm::vec3(0,0,0));
 	}
 	
@@ -1065,6 +1067,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 		else if (event.key.keysym.sym == SDLK_u){
 			
 			lookAt = false;
+			camera.orbit = false;
 
 			camera.orientation = glm::mat3x3();
 
@@ -1229,6 +1232,10 @@ void handleEvent(SDL_Event event, DrawingWindow &window, Camera &camera,bool &co
 			}	
 
 		}
+		else if(event.key.keysym.sym == SDLK_9){
+
+			camera.orbit = true;
+		}
 		
 		
 	}
@@ -1260,15 +1267,7 @@ int main(int argc, char *argv[]){
 
 	bool sphere = false;
 
-	
-
-	camera.lightType = -1;
-
-	
-	int j = 632;
-	raytrace = true;
-	sphere = true;
-	camera.decreaseZ();
+		
 	while (true){
 
 		// We MUST poll for events - otherwise the window will freeze !
