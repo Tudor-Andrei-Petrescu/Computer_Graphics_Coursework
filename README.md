@@ -3,7 +3,7 @@
 The aim of this coursework was to create a basic rendering engine that can render in wireframe, ray trace, and rasterize.
 
 ### Some of the key features include:
--Orbiting and moving the camera along the X and Y coordinates
+- Orbiting and moving the camera along the X and Y coordinates
 - Hard and soft shadows
 - Different lightings(e.g. diffuse, ambient, specular)
 
